@@ -1,5 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 const setup_1 = require("./setup");
-(0, setup_1.connect)();
-(0, setup_1.listen)();
+const server_instance = new setup_1.Server();
+server_instance.listen();
+server_instance.connect();
