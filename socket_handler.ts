@@ -1,7 +1,6 @@
 import * as fs from 'fs';
-import * as lockfile from 'proper-lockfile';
 import * as net from 'net';
-import * as dns from 'node:dns';
+import isValidDomain from 'is-valid-domain';
 import { canonicalize } from 'json-canonicalize';
 import { parse_message } from './message';
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
@@ -285,7 +284,6 @@ export class SocketHandler {
 
     _check_valid_dns(dns_address: string): Boolean {
         try {
-            let regex = new RegExp(/^(?!-)[A-Za-z0-9-]+([\-\.]{1}[a-z0-9]+)*\.[A-Za-z]{2,6}$/);
             const dns_address_components: string[] = dns_address.split(":");
             if (dns_address_components.length !== 2) {
                 return false;
@@ -301,7 +299,7 @@ export class SocketHandler {
                 return false;
             }
 
-            return regex.test(host);
+            return isValidDomain(host);
         } catch (err: any) {
             this._non_fatal_error("failed to parse peer");
             return false;

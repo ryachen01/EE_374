@@ -17,9 +17,13 @@ export function parse_message(received_message: string): MESSAGE_TYPES | INVALID
                 }));
                 if (HELLO_TYPE.decode(parsed_json)._tag === "Right") {
                     result = (MESSAGE_TYPES.HELLO_RECEIVED);
+                    if (parsed_json["version"] !== "0.9.0") {
+                        result = INVALID_TYPES.INVALID_FORMAT;
+                    }
                 } else {
                     result = INVALID_TYPES.INVALID_FORMAT;
                 }
+
                 break;
             case "getpeers":
                 const PEERS_REQUEST_TYPE = t.exact(t.type({

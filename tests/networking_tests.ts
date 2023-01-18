@@ -10,7 +10,6 @@ const ip_address: string = "127.0.0.1";
 // invalid connection error
 async function test_connection() {
     const test_node = new LightNode();
-    test_node._client.connect(port, ip_address, () => {});
     await sleep(1000);
 
     if (test_node._client.connecting == false) {
@@ -29,46 +28,51 @@ async function test_hello() {
 async function test_reconnection() {
     const test_node = new LightNode();
     test_node._client.destroy();
-    test_node._client.connect(port, ip_address, () => {});
-
-    if (test_node._client.connecting == false) {
+    await sleep(1000);
+    test_node._client.connect(port, ip_address, () => {
         let json_message: any = {
             "type": "Connected to Node",
         };
         test_node._write(json_message);
-    }
+    });
 }
 
 function test_segmented_message() {
     const test_node = new LightNode();
-    test_node._client.connect(port, ip_address, () => {});
-    test_node._client.write("{\"type\":\"ge\"}");
+
+    let hello_message: any = {
+        "type": "hello",
+        "version": "0.9.0",
+        "agent": "Marabu Test Client"
+    }
+    test_node._write(hello_message);
+
+    test_node._client.write(`{"type": "ge`);
     setTimeout(() => {
-        test_node._client.write(", \"tpeers\"}");
+        test_node._client.write(`tpeers"}\n`);
     }, 100);
 
     test_node._client.on('data', (data: string) => {
-        const received_message = JSON.parse(data.toString());
-        if (received_message.type == "getpeers" && Array.isArray(received_message.peers)) {
-            let json_message: any = {
-                "type": "Sucess on Segmented Message"
-            };
-            test_node._write(json_message);
+
+        const messages = data.toString().split("\n");
+        for (const message of messages) {
+            if (message != "") {
+                const received_message = JSON.parse(message);
+                if (received_message.type == "peers" && Array.isArray(received_message.peers)) {
+                    let json_message: any = {
+                        "type": "Sucess on Segmented Message"
+                    };
+                    test_node._write(json_message);
+                }
+            }
+
+
         }
+
     });
 }
 
-// invalid handshake error
-async function test_handshake() {
-
-    const test_node = new LightNode();
-    let json_message: any = {
-        "type": "getpeers"
-    };
-    test_node._write(json_message);
-}
-
-// segmented message (no timeout)
+// long segmented message
 async function test_buffer() {
 
     const test_node = new LightNode();
@@ -86,6 +90,23 @@ async function test_buffer() {
         await sleep(100);
         test_node._client.write(char);
     }
+
+    test_node._client.on('data', (data: string) => {
+
+        const messages = data.toString().split("\n");
+        for (const message of messages) {
+            if (message != "") {
+                const received_message = JSON.parse(message);
+                if (received_message.type == "peers" && Array.isArray(received_message.peers)) {
+                    let json_message: any = {
+                        "type": "Sucess on Segmented Message"
+                    };
+                    test_node._write(json_message);
+                }
+            }
+        }
+
+    });
 }
 
 // segmented message (timeout)
@@ -106,6 +127,7 @@ async function test_buffer_timeout() {
     await sleep(7500);
     if (!test_node._client.destroyed) {
         test_node._client.write(peer_message_1);
+        console.error("shoudl have timed out");
     }
 }
 
@@ -118,15 +140,12 @@ async function run_tests() {
     await sleep(1000);
     console.log("\n---------------------------- \n");
     await test_segmented_message();
-    await sleep(1000);
-
-    // await test_handshake();
-    // await sleep(1000);
-    // console.log("\n---------------------------- \n");
-    // await test_buffer();
-    // await sleep(1500);
-    // console.log("\n---------------------------- \n");
-    // await test_buffer_timeout();
+    await sleep(3000);
+    console.log("\n---------------------------- \n");
+    await test_buffer();
+    await sleep(1500);
+    console.log("\n---------------------------- \n");
+    await test_buffer_timeout();
 
 
 }
