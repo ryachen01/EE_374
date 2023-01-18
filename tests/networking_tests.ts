@@ -95,7 +95,8 @@ async function test_buffer_timeout() {
     let json_message: any = {
         "type": "hello",
         "version": "0.9.0",
-        "agent": "Marabu Test Client"
+        "agent": "Marabu Test Client",
+
     };
     test_node._write(json_message);
     const peer_message: string = `{"type": "getpeers"}\n`;
@@ -106,7 +107,6 @@ async function test_buffer_timeout() {
     if (!test_node._client.destroyed) {
         test_node._client.write(peer_message_1);
     }
-
 }
 
 async function run_tests() {

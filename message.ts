@@ -1,4 +1,4 @@
-import { canonicalize } from 'json-canonicalize';
+import * as t from 'io-ts';
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
 
 export function parse_message(received_message: string): MESSAGE_TYPES | INVALID_TYPES {
@@ -10,37 +10,126 @@ export function parse_message(received_message: string): MESSAGE_TYPES | INVALID
         let parsed_json = JSON.parse(received_message);
         switch (parsed_json["type"]) {
             case "hello":
-                result = (MESSAGE_TYPES.HELLO_RECEIVED);
+                const HELLO_TYPE = t.exact(t.type({
+                    type: t.string,
+                    version: t.string,
+                    agent: t.string
+                }));
+                if (HELLO_TYPE.decode(parsed_json)._tag === "Right") {
+                    result = (MESSAGE_TYPES.HELLO_RECEIVED);
+                } else {
+                    result = INVALID_TYPES.INVALID_FORMAT;
+                }
                 break;
             case "getpeers":
-                result = (MESSAGE_TYPES.PEERS_REQUEST);
+                const PEERS_REQUEST_TYPE = t.exact(t.type({
+                    type: t.string,
+                }));
+                if (PEERS_REQUEST_TYPE.decode(parsed_json)._tag === "Right") {
+                    result = (MESSAGE_TYPES.PEERS_REQUEST);
+                } else {
+                    result = INVALID_TYPES.INVALID_FORMAT;
+                }
                 break;
             case "getchaintip":
-                result = (MESSAGE_TYPES.CHAINTIP_REQUEST);
+                const CHAINTIP_REQUEST_TYPE = t.exact(t.type({
+                    type: t.string,
+                }));
+                if (CHAINTIP_REQUEST_TYPE.decode(parsed_json)._tag === "Right") {
+                    result = (MESSAGE_TYPES.CHAINTIP_REQUEST);
+                } else {
+                    result = INVALID_TYPES.INVALID_FORMAT;
+                }
                 break;
             case "getmempool":
-                result = (MESSAGE_TYPES.MEMPOOL_REQUEST);
+                const MEMPOOL_REQUEST_TYPE = t.exact(t.type({
+                    type: t.string,
+                }));
+                if (MEMPOOL_REQUEST_TYPE.decode(parsed_json)._tag === "Right") {
+                    result = (MESSAGE_TYPES.MEMPOOL_REQUEST);
+                } else {
+                    result = INVALID_TYPES.INVALID_FORMAT;
+                }
                 break;
             case "getobject":
-                result = (MESSAGE_TYPES.OBJECT_REQUEST);
+                const OBJECT_REQUEST_TYPE = t.exact(t.type({
+                    type: t.string,
+                    objectid: t.string
+                }));
+                if (OBJECT_REQUEST_TYPE.decode(parsed_json)._tag === "Right") {
+                    result = (MESSAGE_TYPES.OBJECT_REQUEST);
+                } else {
+                    result = INVALID_TYPES.INVALID_FORMAT;
+                }
                 break;
             case "peers":
-                result = (MESSAGE_TYPES.PEERS_RECEIVED);
+                const PEERS_RECEIVED_TYPE = t.exact(t.type({
+                    type: t.string,
+                    peers: t.array(t.string)
+                }));
+                if (PEERS_RECEIVED_TYPE.decode(parsed_json)._tag === "Right") {
+                    result = (MESSAGE_TYPES.PEERS_RECEIVED);
+                } else {
+                    result = INVALID_TYPES.INVALID_FORMAT;
+                }
                 break;
             case "chaintip":
-                result = (MESSAGE_TYPES.CHAINTIP_RECEIVED);
+                const CHAINTIP_RECEIVED_TYPE = t.exact(t.type({
+                    type: t.string,
+                    blockid: t.string
+                }));
+                if (CHAINTIP_RECEIVED_TYPE.decode(parsed_json)._tag === "Right") {
+                    result = (MESSAGE_TYPES.CHAINTIP_RECEIVED);
+                } else {
+                    result = INVALID_TYPES.INVALID_FORMAT;
+                }
                 break;
             case "mempool":
-                result = (MESSAGE_TYPES.MEMPOOL_RECEIVED);
+                const MEMPOOL_RECEIVED_TYPE = t.exact(t.type({
+                    type: t.string,
+                    txids: t.array(t.string)
+                }));
+                if (MEMPOOL_RECEIVED_TYPE.decode(parsed_json)._tag === "Right") {
+                    result = (MESSAGE_TYPES.MEMPOOL_RECEIVED);
+                } else {
+                    result = INVALID_TYPES.INVALID_FORMAT;
+                }
                 break;
             case "object":
-                result = (MESSAGE_TYPES.OBJECT_RECEIVED);
+                const OBJECT_RECEIVED_TYPE = t.exact(t.type({
+                    type: t.string,
+                    object: t.type({
+                        type: t.string
+                    })
+                }));
+                if (OBJECT_RECEIVED_TYPE.decode(parsed_json)._tag === "Right") {
+                    result = (MESSAGE_TYPES.OBJECT_RECEIVED);
+                } else {
+                    result = INVALID_TYPES.INVALID_FORMAT;
+                }
                 break;
             case "ihaveobject":
-                result = (MESSAGE_TYPES.HAS_OBJECT);
+                const HAS_OBJECT_TYPE = t.exact(t.type({
+                    type: t.string,
+                    objectid: t.string,
+                }));
+                if (HAS_OBJECT_TYPE.decode(parsed_json)._tag === "Right") {
+                    result = (MESSAGE_TYPES.HAS_OBJECT);
+                } else {
+                    result = INVALID_TYPES.INVALID_FORMAT;
+                }
                 break;
             case "error":
-                result = (MESSAGE_TYPES.NO_MESSAGE);
+                const ERROR_TYPE = t.exact(t.type({
+                    type: t.string,
+                    name: t.string,
+                    message: t.string,
+                }));
+                if (ERROR_TYPE.decode(parsed_json)._tag === "Right") {
+                    result = (MESSAGE_TYPES.NO_MESSAGE);
+                } else {
+                    result = INVALID_TYPES.INVALID_FORMAT;
+                }
                 break;
             default:
                 result = (INVALID_TYPES.INVALID_MESSAGE);

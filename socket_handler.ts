@@ -1,7 +1,15 @@
+import * as fs from 'fs';
+import * as lockfile from 'proper-lockfile';
 import * as net from 'net';
+import * as dns from 'node:dns';
 import { canonicalize } from 'json-canonicalize';
 import { parse_message } from './message';
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
+
+import peers_json from './peers.json'
+import testing_peers_json from './testing_peers.json'
+
+
 
 export class SocketHandler {
 
@@ -58,23 +66,63 @@ export class SocketHandler {
     }
 
     _fatal_error(err: string) {
-        console.error(`Error triggered by ${this._remote_ip}: ${err}`);
+        console.error(`Fatal error triggered by ${this._remote_ip}: ${err}`);
         this.close_connection();
     }
 
     connect(ip_address: string, port: number) {
+        let connection_timer: any;
+        connection_timer = setTimeout(() => {
+            const testing_peers: string[] = testing_peers_json["peers"];
+            const test_list_index: number = testing_peers.indexOf(this._remote_ip);
+            if (test_list_index !== -1) {
+                testing_peers_json["peers"].splice(test_list_index, 1);
+            }
+            this._update_json_list("./testing_peers.json", testing_peers_json);
+            this._fatal_error("failed to connect to node");
+        }, 5000);
+
         this._socket.connect(port, ip_address, () => {
+            clearTimeout(connection_timer);
             console.log(`Connected to ${this._remote_ip}`);
+
+            const exisitng_peers: string[] = peers_json["peers"];
+            const testing_peers: string[] = testing_peers_json["peers"];
+
+            if (exisitng_peers.indexOf(this._remote_ip) == -1) {
+                console.log("adding new peer: ", ip_address);
+                peers_json["peers"].push(this._remote_ip);
+            }
+            this._update_json_list('./peers.json', peers_json);
+
+            const test_list_index: number = testing_peers.indexOf(this._remote_ip);
+            if (test_list_index !== -1) {
+                testing_peers_json["peers"].splice(test_list_index, 1);
+            }
+            this._update_json_list("./testing_peers.json", testing_peers_json);
+
             this.do_handshake();
-        })
+        });
+
+        // imediately fails to connect
+        this._socket.on('error', (err: string) => {
+            clearTimeout(connection_timer);
+            const testing_peers: string[] = testing_peers_json["peers"];
+            const test_list_index: number = testing_peers.indexOf(this._remote_ip);
+            if (test_list_index !== -1) {
+                testing_peers_json["peers"].splice(test_list_index, 1);
+            }
+            this._update_json_list("./testing_peers.json", testing_peers_json);
+        });
+
     }
 
     do_handshake() {
-        this.handle_message(MESSAGE_TYPES.SEND_HELLO);
-        this.handle_message(MESSAGE_TYPES.REQUEST_PEERS)
+        this._handle_message(MESSAGE_TYPES.SEND_HELLO);
+        this._handle_message(MESSAGE_TYPES.REQUEST_PEERS)
     }
 
-    check_handshake() {
+    _check_handshake() {
 
         if (!this._handshake_completed) {
             const json_message: any =
@@ -89,7 +137,7 @@ export class SocketHandler {
 
     }
 
-    handle_message(message_type: MESSAGE_TYPES | INVALID_TYPES): void {
+    _handle_message(message_type: MESSAGE_TYPES | INVALID_TYPES): void {
 
 
         let json_message: any = null;
@@ -102,20 +150,21 @@ export class SocketHandler {
                 json_message = {
                     "type": "hello",
                     "version": "0.9.0",
-                    "agent": "Marabu-Core Client 0.9"
+                    "agent": "Marabu-Core Client 0.9",
                 }
                 this._write(json_message);
                 break;
             case MESSAGE_TYPES.PEERS_REQUEST:
-                this.check_handshake();
+                this._check_handshake();
+                const peers_list: string[] = peers_json["peers"];
                 json_message = {
                     "type": "peers",
-                    "peers": [],
+                    "peers": peers_list,
                 }
                 this._write(json_message);
                 break;
             case MESSAGE_TYPES.PEERS_RECEIVED:
-                this.check_handshake();
+                this._check_handshake();
                 break;
             case MESSAGE_TYPES.REQUEST_PEERS:
                 json_message = {
@@ -124,7 +173,7 @@ export class SocketHandler {
                 this._write(json_message);
                 break;
             case MESSAGE_TYPES.MEMPOOL_REQUEST:
-                this.check_handshake();
+                this._check_handshake();
                 json_message = {
                     "type": "mempool",
                     "txids": [],
@@ -132,7 +181,7 @@ export class SocketHandler {
                 this._write(json_message);
                 break;
             case MESSAGE_TYPES.MEMPOOL_RECEIVED:
-                this.check_handshake();
+                this._check_handshake();
                 break;
             case MESSAGE_TYPES.REQUEST_MEMPOOL:
                 json_message = {
@@ -141,7 +190,7 @@ export class SocketHandler {
                 this._write(json_message);
                 break;
             case MESSAGE_TYPES.CHAINTIP_REQUEST:
-                this.check_handshake();
+                this._check_handshake();
                 json_message = {
                     "type": "chaintip",
                     "blockid": "0024839ec9632d382486ba7aac7e0bda3b4bda1d4bd79be9ae78e7e1e813ddd8"
@@ -149,7 +198,7 @@ export class SocketHandler {
                 this._write(json_message);
                 break;
             case MESSAGE_TYPES.CHAINTIP_RECEIVED:
-                this.check_handshake();
+                this._check_handshake();
                 break;
             case MESSAGE_TYPES.REQUEST_CHAINTIP:
                 json_message = {
@@ -158,7 +207,7 @@ export class SocketHandler {
                 this._write(json_message);
                 break;
             case MESSAGE_TYPES.OBJECT_REQUEST:
-                this.check_handshake();
+                this._check_handshake();
                 json_message = {
                     "type": "object",
                     "object": {
@@ -175,7 +224,7 @@ export class SocketHandler {
                 this._write(json_message);
                 break;
             case MESSAGE_TYPES.OBJECT_RECEIVED:
-                this.check_handshake();
+                this._check_handshake();
                 break;
             case MESSAGE_TYPES.REQUEST_OBJECT:
                 json_message = {
@@ -185,7 +234,7 @@ export class SocketHandler {
                 this._write(json_message);
                 break;
             case MESSAGE_TYPES.HAS_OBJECT:
-                this.check_handshake();
+                this._check_handshake();
                 break;
             case MESSAGE_TYPES.NO_MESSAGE:
                 break;
@@ -211,6 +260,108 @@ export class SocketHandler {
         }
     }
 
+    _check_valid_ip(ip_address: string): Boolean {
+        try {
+            const ip_address_components: string[] = ip_address.split(":");
+            if (ip_address_components.length !== 2) {
+                return false;
+            }
+            const host: string = ip_address_components[0];
+            const port: number = parseInt(ip_address_components[1]);
+
+            if (net.isIP(host) == 0) {
+                return false;
+            }
+
+            if (port < 1 || port > 65535) {
+                return false;
+            }
+            return true;
+        } catch (err: any) {
+            this._non_fatal_error("failed to parse peer");
+            return false;
+        }
+    }
+
+    _check_valid_dns(dns_address: string): Boolean {
+        try {
+            let regex = new RegExp(/^(?!-)[A-Za-z0-9-]+([\-\.]{1}[a-z0-9]+)*\.[A-Za-z]{2,6}$/);
+            const dns_address_components: string[] = dns_address.split(":");
+            if (dns_address_components.length !== 2) {
+                return false;
+            }
+            const host: string = dns_address_components[0];
+            const port: number = parseInt(dns_address_components[1]);
+
+            if (host == null) {
+                return false;
+            }
+
+            if (port < 1 || port > 65535) {
+                return false;
+            }
+
+            return regex.test(host);
+        } catch (err: any) {
+            this._non_fatal_error("failed to parse peer");
+            return false;
+        }
+
+    }
+
+    _update_json_list(json_path: string, new_json: any): void {
+
+        try {
+            fs.writeFileSync(json_path, JSON.stringify(new_json));
+        } catch (error) {
+            this._non_fatal_error("failed to update file");
+        }
+
+    }
+
+    _try_new_peer(host: string, port: number): void {
+        const client = new net.Socket();
+        const remote_ip = `${host}:${port}`
+
+        const socket_handler = new SocketHandler(client, remote_ip);
+        socket_handler.connect(host, port);
+    }
+
+    _handle_new_peers(message: string): void {
+        try {
+
+            const exisitng_peers: string[] = peers_json["peers"];
+            let testing_peers: string[] = testing_peers_json["peers"];
+
+            const new_peers_json: any = JSON.parse(message);
+            const new_peers_list: string[] = new_peers_json["peers"];
+
+            for (const peer of new_peers_list) {
+
+                if (this._check_valid_ip(peer) || this._check_valid_dns(peer)) {
+
+                    const ip_address_components = peer.split(":");
+                    const host: string = ip_address_components[0];
+                    const port: number = parseInt(ip_address_components[1]);
+
+                    if (exisitng_peers.indexOf(peer) == -1 && testing_peers.indexOf(peer) == -1) {
+                        console.log("trying to add new peer: ", peer);
+
+                        testing_peers.push(peer);
+                        this._update_json_list("./testing_peers.json", testing_peers_json);
+
+                        this._try_new_peer(host, port);
+                    }
+                }
+            }
+
+        } catch (err) {
+            this._non_fatal_error("failed to read new peers");
+        }
+
+
+    }
+
     _data_handler(data: string) {
 
         if (this._socket.destroyed) {
@@ -232,7 +383,11 @@ export class SocketHandler {
             let message: string = this._buffer.substring(0, eom);
             let message_type: MESSAGE_TYPES | INVALID_TYPES = parse_message(message);
 
-            this.handle_message(message_type);
+            this._handle_message(message_type);
+
+            if (message_type == MESSAGE_TYPES.PEERS_RECEIVED) {
+                this._handle_new_peers(message);
+            }
 
             this._buffer = this._buffer.substring(eom + 1)
             eom = this._buffer.indexOf('\n')
