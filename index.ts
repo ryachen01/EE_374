@@ -1,4 +1,4 @@
-import { Server } from './setup';
-const server_instance = new Server();
-server_instance.listen()
-server_instance.connect()
+import { Node } from './node';
+const my_node = new Node();
+my_node.listen();
+my_node.connect('45.63.84.226');
