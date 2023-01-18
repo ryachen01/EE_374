@@ -5,13 +5,12 @@ const port: number = 18018;
 
 export class Node {
 
-    handshake_completed: Boolean = false;
-    buffer: string = '';
-
     connect(ip_address: string) {
 
         const client = new net.Socket();
-        const socket_handler = new SocketHandler(client);
+        const remote_ip = `${ip_address}:${port}`
+
+        const socket_handler = new SocketHandler(client, remote_ip);
         socket_handler.connect(ip_address, port);
 
     }
@@ -25,7 +24,9 @@ export class Node {
 
         server.on('connection', (socket: net.Socket) => {
 
-            const socket_handler = new SocketHandler(socket);
+            const remote_ip: string = `${socket.remoteAddress}:${socket.remotePort}`
+            console.log(remote_ip);
+            const socket_handler = new SocketHandler(socket, remote_ip);
             socket_handler.do_handshake();
 
         });
