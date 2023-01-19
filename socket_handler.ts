@@ -4,10 +4,7 @@ import isValidDomain from 'is-valid-domain';
 import { canonicalize } from 'json-canonicalize';
 import { parse_message } from './message';
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
-
 import peers_json from './peers.json'
-import testing_peers_json from './testing_peers.json'
-
 
 
 export class SocketHandler {
@@ -21,7 +18,7 @@ export class SocketHandler {
 
     _error_count: number = 0;
     _error_threshold: number = 50;
-    _timeout_length: number = 5000;
+    _timeout_length: number = 10000;
     _max_buffer_size: number = 1000000;
 
 
@@ -72,12 +69,6 @@ export class SocketHandler {
     connect(ip_address: string, port: number) {
         let connection_timer: any;
         connection_timer = setTimeout(() => {
-            const testing_peers: string[] = testing_peers_json["peers"];
-            const test_list_index: number = testing_peers.indexOf(this._remote_ip);
-            if (test_list_index !== -1) {
-                testing_peers_json["peers"].splice(test_list_index, 1);
-            }
-            this._update_json_list("./testing_peers.json", testing_peers_json);
             this._fatal_error("failed to connect to node");
         }, 5000);
 
@@ -85,33 +76,12 @@ export class SocketHandler {
             clearTimeout(connection_timer);
             console.log(`Connected to ${this._remote_ip}`);
 
-            const exisitng_peers: string[] = peers_json["peers"];
-            const testing_peers: string[] = testing_peers_json["peers"];
-
-            if (exisitng_peers.indexOf(this._remote_ip) == -1) {
-                console.log("adding new peer: ", ip_address);
-                peers_json["peers"].push(this._remote_ip);
-            }
-            this._update_json_list('./peers.json', peers_json);
-
-            const test_list_index: number = testing_peers.indexOf(this._remote_ip);
-            if (test_list_index !== -1) {
-                testing_peers_json["peers"].splice(test_list_index, 1);
-            }
-            this._update_json_list("./testing_peers.json", testing_peers_json);
-
             this.do_handshake();
         });
 
         // imediately fails to connect
         this._socket.on('error', (err: string) => {
             clearTimeout(connection_timer);
-            const testing_peers: string[] = testing_peers_json["peers"];
-            const test_list_index: number = testing_peers.indexOf(this._remote_ip);
-            if (test_list_index !== -1) {
-                testing_peers_json["peers"].splice(test_list_index, 1);
-            }
-            this._update_json_list("./testing_peers.json", testing_peers_json);
         });
 
     }
@@ -329,7 +299,6 @@ export class SocketHandler {
         try {
 
             const exisitng_peers: string[] = peers_json["peers"];
-            let testing_peers: string[] = testing_peers_json["peers"];
 
             const new_peers_json: any = JSON.parse(message);
             const new_peers_list: string[] = new_peers_json["peers"];
@@ -342,21 +311,21 @@ export class SocketHandler {
                     const host: string = ip_address_components[0];
                     const port: number = parseInt(ip_address_components[1]);
 
-                    if (exisitng_peers.indexOf(peer) == -1 && testing_peers.indexOf(peer) == -1) {
+                    if (exisitng_peers.indexOf(peer) == -1) {
                         console.log("trying to add new peer: ", peer);
 
-                        testing_peers.push(peer);
-                        this._update_json_list("./testing_peers.json", testing_peers_json);
-
+                        exisitng_peers.push(peer);
+                        this._update_json_list("./peers.json", peers_json);
                         this._try_new_peer(host, port);
                     }
+                } else {
+                    console.log("invalid ip: ", peer);
                 }
             }
 
         } catch (err) {
             this._non_fatal_error("failed to read new peers");
         }
-
 
     }
 
@@ -402,7 +371,7 @@ export class SocketHandler {
         const json_message: any =
         {
             "type": "error",
-            "name": "BUFFER_ERROR",
+            "name": "INVALID_FORMAT",
             "description": "Message exceeds maximum length."
         };
         this._write(json_message);
@@ -414,7 +383,7 @@ export class SocketHandler {
         const json_message: any =
         {
             "type": "error",
-            "name": "BUFFER_ERROR",
+            "name": "INVALID_FORMAT",
             "description": "Took too long to complete message."
         };
         console.log(json_message);
@@ -442,7 +411,10 @@ export class SocketHandler {
         if (this._timer_id) {
             clearTimeout(this._timer_id);
         }
-        this._socket.destroy();
+        if (!this._socket.destroyed) {
+            this._socket.destroy();
+        }
+
     }
 
 }

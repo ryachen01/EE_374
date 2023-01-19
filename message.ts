@@ -17,7 +17,7 @@ export function parse_message(received_message: string): MESSAGE_TYPES | INVALID
                 }));
                 if (HELLO_TYPE.decode(parsed_json)._tag === "Right") {
                     result = (MESSAGE_TYPES.HELLO_RECEIVED);
-                    if (parsed_json["version"] !== "0.9.0") {
+                    if (parsed_json["version"].slice(0, -1) != "0.9.") {
                         result = INVALID_TYPES.INVALID_FORMAT;
                     }
                 } else {
