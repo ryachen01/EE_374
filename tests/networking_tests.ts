@@ -58,7 +58,7 @@ function test_segmented_message() {
     // test_node._client.connect(port, ip_address, () => {});
     test_node._client.write("{\"type\":\"ge\"}");
     setTimeout(() => {
-        test_node._client.write(", \"tpeers\"}");
+        test_node._client.write(`tpeers"}\n`);
     }, 100);
 }
 
@@ -155,6 +155,23 @@ async function test_buffer() {
         await sleep(100);
         test_node._client.write(char);
     }
+
+    test_node._client.on('data', (data: string) => {
+
+        const messages = data.toString().split("\n");
+        for (const message of messages) {
+            if (message != "") {
+                const received_message = JSON.parse(message);
+                if (received_message.type == "peers" && Array.isArray(received_message.peers)) {
+                    let json_message: any = {
+                        "type": "Sucess on Segmented Message"
+                    };
+                    test_node._write(json_message);
+                }
+            }
+        }
+
+    });
 }
 
 // segmented message (timeout)
@@ -175,6 +192,7 @@ async function test_buffer_timeout() {
     await sleep(12500);
     if (!test_node._client.destroyed) {
         test_node._client.write(peer_message_1);
+        console.error("shoudl have timed out");
     }
 }
 
