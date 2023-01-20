@@ -1,8 +1,10 @@
+import * as blake2 from 'blake2';
 import * as fs from 'fs';
 import * as net from 'net';
-import isValidDomain from 'is-valid-domain';
+import level from 'level-ts';
 import { canonicalize } from 'json-canonicalize';
 import { parse_message } from './message';
+import { check_valid_ip, check_valid_dns } from './utils';
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
 import peers_json from './peers.json'
 
@@ -77,6 +79,12 @@ export class SocketHandler {
             console.log(`Connected to ${this._remote_ip}`);
 
             this.do_handshake();
+            let object_message: any = {
+                "type": "getobject",
+                "objectid": "0000000052a0e645eca917ae1c196e0d0a4fb756747f29ef52594d68484bb5e2",
+            };
+
+            this._write(object_message);
         });
 
         // imediately fails to connect
@@ -229,53 +237,53 @@ export class SocketHandler {
         }
     }
 
-    _check_valid_ip(ip_address: string): Boolean {
-        try {
-            const ip_address_components: string[] = ip_address.split(":");
-            if (ip_address_components.length !== 2) {
-                return false;
-            }
-            const host: string = ip_address_components[0];
-            const port: number = parseInt(ip_address_components[1]);
+    // _check_valid_ip(ip_address: string): Boolean {
+    //     try {
+    //         const ip_address_components: string[] = ip_address.split(":");
+    //         if (ip_address_components.length !== 2) {
+    //             return false;
+    //         }
+    //         const host: string = ip_address_components[0];
+    //         const port: number = parseInt(ip_address_components[1]);
 
-            if (net.isIP(host) == 0) {
-                return false;
-            }
+    //         if (net.isIP(host) == 0) {
+    //             return false;
+    //         }
 
-            if (port < 1 || port > 65535) {
-                return false;
-            }
-            return true;
-        } catch (err: any) {
-            this._non_fatal_error("failed to parse peer");
-            return false;
-        }
-    }
+    //         if (port < 1 || port > 65535) {
+    //             return false;
+    //         }
+    //         return true;
+    //     } catch (err: any) {
+    //         this._non_fatal_error("failed to parse peer");
+    //         return false;
+    //     }
+    // }
 
-    _check_valid_dns(dns_address: string): Boolean {
-        try {
-            const dns_address_components: string[] = dns_address.split(":");
-            if (dns_address_components.length !== 2) {
-                return false;
-            }
-            const host: string = dns_address_components[0];
-            const port: number = parseInt(dns_address_components[1]);
+    // _check_valid_dns(dns_address: string): Boolean {
+    //     try {
+    //         const dns_address_components: string[] = dns_address.split(":");
+    //         if (dns_address_components.length !== 2) {
+    //             return false;
+    //         }
+    //         const host: string = dns_address_components[0];
+    //         const port: number = parseInt(dns_address_components[1]);
 
-            if (host == null) {
-                return false;
-            }
+    //         if (host == null) {
+    //             return false;
+    //         }
 
-            if (port < 1 || port > 65535) {
-                return false;
-            }
+    //         if (port < 1 || port > 65535) {
+    //             return false;
+    //         }
 
-            return isValidDomain(host);
-        } catch (err: any) {
-            this._non_fatal_error("failed to parse peer");
-            return false;
-        }
+    //         return isValidDomain(host);
+    //     } catch (err: any) {
+    //         this._non_fatal_error("failed to parse peer");
+    //         return false;
+    //     }
 
-    }
+    // }
 
     _update_json_list(json_path: string, new_json: any): void {
 
@@ -305,7 +313,7 @@ export class SocketHandler {
 
             for (const peer of new_peers_list) {
 
-                if (this._check_valid_ip(peer) || this._check_valid_dns(peer)) {
+                if (check_valid_ip(peer) || check_valid_dns(peer)) {
 
                     const ip_address_components = peer.split(":");
                     const host: string = ip_address_components[0];
@@ -325,6 +333,38 @@ export class SocketHandler {
 
         } catch (err) {
             this._non_fatal_error("failed to read new peers");
+        }
+
+    }
+
+    _handle_new_object(object: string): void {
+        try {
+            const blake_hash = blake2.createHash('blake2s');
+            const json_object = JSON.parse(object)["object"];
+            const canonicalized_json = canonicalize(json_object)
+            const hash_input = Buffer.from(canonicalized_json);
+            blake_hash.update(hash_input);
+            const hash_output = blake_hash.digest("hex");
+            this._save_object(object, hash_output);
+        } catch (err) {
+            this._non_fatal_error("failed to handle object");
+        }
+    }
+
+    async _save_object(object: string, object_hash: string) {
+
+        const db = new level('./database');
+
+        try {
+            const has_object: Boolean = await db.exists(object_hash);
+            if (!has_object) {
+                db.put(object_hash, object);
+            } else {
+                const data = await db.get(object_hash);
+                console.log("found existing object: ", data);
+            }
+        } catch (err) {
+            this._fatal_error("failed to save object");
         }
 
     }
@@ -354,7 +394,10 @@ export class SocketHandler {
 
             if (message_type == MESSAGE_TYPES.PEERS_RECEIVED) {
                 this._handle_new_peers(message);
+            } else if (message_type == MESSAGE_TYPES.OBJECT_RECEIVED) {
+                this._handle_new_object(message);
             }
+
 
             this._buffer = this._buffer.substring(eom + 1)
             eom = this._buffer.indexOf('\n')
