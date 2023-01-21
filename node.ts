@@ -11,7 +11,15 @@ export class Node {
         const remote_ip = `${ip_address}:${port}`
 
         const socket_handler = new SocketHandler(client, remote_ip);
-        socket_handler.connect(ip_address, port);
+        socket_handler.connect(ip_address, port).then(() => {
+            let object_message: any = {
+                "type": "getobject",
+                "objectid": "0000000052a0e645eca917ae1c196e0d0a4fb756747f29ef52594d68484bb5e2",
+            };
+
+            socket_handler._write(object_message);
+        })
+
 
     }
 

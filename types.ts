@@ -14,7 +14,7 @@ export enum MESSAGE_TYPES {
     OBJECT_RECEIVED = 12,
     REQUEST_OBJECT = 13,
     HAS_OBJECT = 14,
-    NO_MESSAGE = 15,
+    ERROR_RECEIVED = 15,
 }
 
 export enum INVALID_TYPES {
