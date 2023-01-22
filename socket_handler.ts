@@ -1,8 +1,10 @@
+import * as blake2 from 'blake2';
 import * as fs from 'fs';
 import * as net from 'net';
-import isValidDomain from 'is-valid-domain';
+import level from 'level-ts';
 import { canonicalize } from 'json-canonicalize';
 import { parse_message } from './message';
+import { check_valid_ip, check_valid_dns } from './utils';
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
 import peers_json from './peers.json'
 
@@ -66,29 +68,51 @@ export class SocketHandler {
         this.close_connection();
     }
 
-    connect(ip_address: string, port: number) {
+    connect(ip_address: string, port: number): Promise<Boolean> {
         let connection_timer: any;
-        connection_timer = setTimeout(() => {
-            this._fatal_error("failed to connect to node");
-        }, 5000);
+        return new Promise((resolve) => {
+            connection_timer = setTimeout(() => {
+                this._fatal_error("failed to connect to node");
+                resolve(false);
+            }, 5000);
 
-        this._socket.connect(port, ip_address, () => {
-            clearTimeout(connection_timer);
-            console.log(`Connected to ${this._remote_ip}`);
+            this._socket.connect(port, ip_address, () => {
+                clearTimeout(connection_timer);
+                console.log(`Connected to ${this._remote_ip}`);
 
-            this.do_handshake();
-        });
+                this.do_handshake();
+                resolve(true);
+            });
 
-        // imediately fails to connect
-        this._socket.on('error', (err: string) => {
-            clearTimeout(connection_timer);
+            // imediately fails to connect
+            this._socket.on('error', (err: string) => {
+                clearTimeout(connection_timer);
+                resolve(false);
+            });
+
         });
 
     }
 
+    _send_hello() {
+        const json_message = {
+            "type": "hello",
+            "version": "0.9.0",
+            "agent": "Marabu-Core Client 0.9",
+        }
+        this._write(json_message);
+    }
+
+    _request_peers() {
+        const json_message = {
+            "type": "getpeers",
+        }
+        this._write(json_message);
+    }
+
     do_handshake() {
-        this._handle_message(MESSAGE_TYPES.SEND_HELLO);
-        this._handle_message(MESSAGE_TYPES.REQUEST_PEERS)
+        this._send_hello();
+        this._request_peers();
     }
 
     _check_handshake() {
@@ -115,14 +139,6 @@ export class SocketHandler {
             case MESSAGE_TYPES.HELLO_RECEIVED:
                 this._handshake_completed = true;
                 break;
-            case MESSAGE_TYPES.SEND_HELLO:
-                json_message = {
-                    "type": "hello",
-                    "version": "0.9.0",
-                    "agent": "Marabu-Core Client 0.9",
-                }
-                this._write(json_message);
-                break;
             case MESSAGE_TYPES.PEERS_REQUEST:
                 this._check_handshake();
                 const peers_list: string[] = peers_json["peers"];
@@ -135,12 +151,7 @@ export class SocketHandler {
             case MESSAGE_TYPES.PEERS_RECEIVED:
                 this._check_handshake();
                 break;
-            case MESSAGE_TYPES.REQUEST_PEERS:
-                json_message = {
-                    "type": "getpeers",
-                }
-                this._write(json_message);
-                break;
+
             case MESSAGE_TYPES.MEMPOOL_REQUEST:
                 this._check_handshake();
                 json_message = {
@@ -152,60 +163,25 @@ export class SocketHandler {
             case MESSAGE_TYPES.MEMPOOL_RECEIVED:
                 this._check_handshake();
                 break;
-            case MESSAGE_TYPES.REQUEST_MEMPOOL:
-                json_message = {
-                    "type": "getmempool",
-                }
-                this._write(json_message);
-                break;
+
             case MESSAGE_TYPES.CHAINTIP_REQUEST:
                 this._check_handshake();
-                json_message = {
-                    "type": "chaintip",
-                    "blockid": "0024839ec9632d382486ba7aac7e0bda3b4bda1d4bd79be9ae78e7e1e813ddd8"
-                }
-                this._write(json_message);
                 break;
             case MESSAGE_TYPES.CHAINTIP_RECEIVED:
                 this._check_handshake();
                 break;
-            case MESSAGE_TYPES.REQUEST_CHAINTIP:
-                json_message = {
-                    "type": "getchaintip",
-                }
-                this._write(json_message);
-                break;
+
             case MESSAGE_TYPES.OBJECT_REQUEST:
                 this._check_handshake();
-                json_message = {
-                    "type": "object",
-                    "object": {
-                        "T": "00000000abc00000000000000000000000000000000000000000000000000000",
-                        "created": 1671062400,
-                        "miner": "Marabu",
-                        "nonce": "000000000000000000000000000000000000000000000000000000021bea03ed",
-                        "note": "The New York Times 2022-12-13: Scientists Achieve Nuclear Fusion Breakthrough With Blast of 192 Lasers",
-                        "previd": null,
-                        "txids": [],
-                        "type": "block"
-                    }
-                }
-                this._write(json_message);
+
                 break;
             case MESSAGE_TYPES.OBJECT_RECEIVED:
                 this._check_handshake();
                 break;
-            case MESSAGE_TYPES.REQUEST_OBJECT:
-                json_message = {
-                    "type": "getobject",
-                    "objectid": "0024839ec9632d382486ba7aac7e0bda3b4bda1d4bd79be9ae78e7e1e813ddd8",
-                }
-                this._write(json_message);
-                break;
             case MESSAGE_TYPES.HAS_OBJECT:
                 this._check_handshake();
                 break;
-            case MESSAGE_TYPES.NO_MESSAGE:
+            case MESSAGE_TYPES.ERROR_RECEIVED:
                 break;
             case INVALID_TYPES.INVALID_MESSAGE:
                 json_message =
@@ -227,54 +203,6 @@ export class SocketHandler {
                 this._fatal_error("received invalid format");
                 break;
         }
-    }
-
-    _check_valid_ip(ip_address: string): Boolean {
-        try {
-            const ip_address_components: string[] = ip_address.split(":");
-            if (ip_address_components.length !== 2) {
-                return false;
-            }
-            const host: string = ip_address_components[0];
-            const port: number = parseInt(ip_address_components[1]);
-
-            if (net.isIP(host) == 0) {
-                return false;
-            }
-
-            if (port < 1 || port > 65535) {
-                return false;
-            }
-            return true;
-        } catch (err: any) {
-            this._non_fatal_error("failed to parse peer");
-            return false;
-        }
-    }
-
-    _check_valid_dns(dns_address: string): Boolean {
-        try {
-            const dns_address_components: string[] = dns_address.split(":");
-            if (dns_address_components.length !== 2) {
-                return false;
-            }
-            const host: string = dns_address_components[0];
-            const port: number = parseInt(dns_address_components[1]);
-
-            if (host == null) {
-                return false;
-            }
-
-            if (port < 1 || port > 65535) {
-                return false;
-            }
-
-            return isValidDomain(host);
-        } catch (err: any) {
-            this._non_fatal_error("failed to parse peer");
-            return false;
-        }
-
     }
 
     _update_json_list(json_path: string, new_json: any): void {
@@ -305,7 +233,7 @@ export class SocketHandler {
 
             for (const peer of new_peers_list) {
 
-                if (this._check_valid_ip(peer) || this._check_valid_dns(peer)) {
+                if (check_valid_ip(peer) || check_valid_dns(peer)) {
 
                     const ip_address_components = peer.split(":");
                     const host: string = ip_address_components[0];
@@ -325,6 +253,105 @@ export class SocketHandler {
 
         } catch (err) {
             this._non_fatal_error("failed to read new peers");
+        }
+
+    }
+
+    _handle_new_object(object: string): void {
+        try {
+            const blake_hash = blake2.createHash('blake2s');
+            const json_object = JSON.parse(object)["object"];
+            const canonicalized_json = canonicalize(json_object)
+            const hash_input = Buffer.from(canonicalized_json);
+            blake_hash.update(hash_input);
+            const hash_output = blake_hash.digest("hex");
+            this._save_object(json_object, hash_output);
+        } catch (err) {
+            this._non_fatal_error("failed to handle object");
+        }
+    }
+
+    async _save_object(object: string, object_id: string) {
+
+        const db = new level('./database');
+
+        try {
+            const has_object: Boolean = await db.exists(object_id);
+            if (!has_object) {
+                console.log("found new object:", object_id);
+                await db.put(object_id, object);
+                this._broadcast_new_object(object_id);
+            } else {
+                const data = await db.get(object_id);
+                console.log("found existing object: ", data);
+            }
+        } catch (err) {
+            this._fatal_error("failed to save object");
+        }
+
+    }
+
+    async _broadcast_new_object(object_id: string) {
+
+        console.log("attempting broadcast");
+        const peers: string[] = peers_json["peers"];
+        for (const peer of peers) {
+            const ip_address_components = peer.split(":");
+            const host: string = ip_address_components[0];
+            const port: number = parseInt(ip_address_components[1]);
+            const client = new net.Socket();
+            const remote_ip = `${host}:${port}`
+
+            const socket_handler = new SocketHandler(client, remote_ip);
+            const connected: Boolean = await socket_handler.connect(host, port);
+            if (connected) {
+                const broadcast_message = {
+                    "type": "ihaveobject",
+                    "objectid": object_id,
+                }
+                socket_handler._write(broadcast_message);
+            }
+        }
+
+    }
+
+    async _handle_object_broadcast(object: string) {
+
+        const db = new level('./database');
+
+        try {
+            const object_id = JSON.parse(object)["objectid"];
+            const has_object: Boolean = await db.exists(object_id);
+            if (!has_object) {
+                const request_message = `{
+                    "type": "object",
+                    "objectid": ${object_id},
+                }`
+                this._socket.write(request_message);
+            }
+
+        } catch (err) {
+            this._fatal_error("failed to handle object broadcast");
+        }
+    }
+
+    async _handle_object_request(message: string) {
+
+        const db = new level('./database');
+        try {
+            const object_id = JSON.parse(message)["objectid"];
+            const has_object: Boolean = await db.exists(object_id);
+            if (has_object) {
+                const object = await db.get(object_id);
+                const request_message = {
+                    "type": "object",
+                    "object": object,
+                }
+                this._write(request_message);
+            }
+
+        } catch (err) {
+            this._fatal_error("failed to handle object request");
         }
 
     }
@@ -354,7 +381,14 @@ export class SocketHandler {
 
             if (message_type == MESSAGE_TYPES.PEERS_RECEIVED) {
                 this._handle_new_peers(message);
+            } else if (message_type == MESSAGE_TYPES.OBJECT_RECEIVED) {
+                this._handle_new_object(message);
+            } else if (message_type == MESSAGE_TYPES.HAS_OBJECT) {
+                this._handle_object_broadcast(message);
+            } else if (message_type == MESSAGE_TYPES.OBJECT_REQUEST) {
+                this._handle_object_request(message);
             }
+
 
             this._buffer = this._buffer.substring(eom + 1)
             eom = this._buffer.indexOf('\n')
@@ -398,7 +432,7 @@ export class SocketHandler {
         }
         try {
             const canonicalized_message: string = canonicalize(data);
-            console.log(`Sent: ${canonicalized_message}\n`)
+            console.log(`Sent to ${this._remote_ip}: ${canonicalized_message}\n`)
             this._socket.write(canonicalized_message + '\n');
         } catch (err) {
             console.error(`failed to send: ${data}`)

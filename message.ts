@@ -130,7 +130,7 @@ export function parse_message(received_message: string): MESSAGE_TYPES | INVALID
                     message: t.string,
                 }));
                 if (ERROR_TYPE.decode(parsed_json)._tag === "Right") {
-                    result = (MESSAGE_TYPES.NO_MESSAGE);
+                    result = (MESSAGE_TYPES.ERROR_RECEIVED);
                 } else {
                     result = INVALID_TYPES.INVALID_FORMAT;
                 }

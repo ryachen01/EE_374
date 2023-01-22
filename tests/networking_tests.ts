@@ -263,4 +263,4 @@ async function test_buffer_overflow() {
 }
 
 
-reset_peer_list(); // change this to test whatever test you want to run
+test_buffer_timeout(); // change this to test whatever test you want to run
