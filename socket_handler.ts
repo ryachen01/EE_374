@@ -6,8 +6,9 @@ import { canonicalize } from 'json-canonicalize';
 import { parse_message } from './message';
 import { check_valid_ip, check_valid_dns } from './utils';
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
-import peers_json from './peers.json'
+import { validate_transaction, validate_coinbase, validate_block } from './validation'
 
+import peers_json from './peers.json'
 
 export class SocketHandler {
 
@@ -81,6 +82,11 @@ export class SocketHandler {
                 console.log(`Connected to ${this._remote_ip}`);
 
                 this.do_handshake();
+
+                validate_transaction('').then((return_val) => {
+                    console.log(`transaciton validated as ${return_val}`);
+                })
+
                 resolve(true);
             });
 
@@ -132,7 +138,6 @@ export class SocketHandler {
 
     _handle_message(message_type: MESSAGE_TYPES | INVALID_TYPES): void {
 
-
         let json_message: any = null;
 
         switch (message_type) {
@@ -175,7 +180,13 @@ export class SocketHandler {
                 this._check_handshake();
 
                 break;
-            case MESSAGE_TYPES.OBJECT_RECEIVED:
+            case MESSAGE_TYPES.BLOCK_RECEIVED:
+                this._check_handshake();
+                break;
+            case MESSAGE_TYPES.TRANSACTION_RECEIVED:
+                this._check_handshake();
+                break;
+            case MESSAGE_TYPES.COINBASE_RECEIVED:
                 this._check_handshake();
                 break;
             case MESSAGE_TYPES.HAS_OBJECT:
@@ -257,7 +268,17 @@ export class SocketHandler {
 
     }
 
-    _handle_new_object(object: string): void {
+    _handle_new_object(object: string, object_type: MESSAGE_TYPES): void {
+
+        switch (object_type) {
+            case MESSAGE_TYPES.BLOCK_RECEIVED:
+                validate_block(object);
+            case MESSAGE_TYPES.TRANSACTION_RECEIVED:
+                validate_transaction(object);
+            case MESSAGE_TYPES.COINBASE_RECEIVED:
+                validate_coinbase(object);
+        }
+
         try {
             const blake_hash = blake2.createHash('blake2s');
             const json_object = JSON.parse(object)["object"];
@@ -381,8 +402,8 @@ export class SocketHandler {
 
             if (message_type == MESSAGE_TYPES.PEERS_RECEIVED) {
                 this._handle_new_peers(message);
-            } else if (message_type == MESSAGE_TYPES.OBJECT_RECEIVED) {
-                this._handle_new_object(message);
+            } else if (message_type == MESSAGE_TYPES.BLOCK_RECEIVED || message_type == MESSAGE_TYPES.COINBASE_RECEIVED || message_type == MESSAGE_TYPES.TRANSACTION_RECEIVED) {
+                this._handle_new_object(message, message_type);
             } else if (message_type == MESSAGE_TYPES.HAS_OBJECT) {
                 this._handle_object_broadcast(message);
             } else if (message_type == MESSAGE_TYPES.OBJECT_REQUEST) {
