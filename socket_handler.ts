@@ -82,11 +82,6 @@ export class SocketHandler {
                 console.log(`Connected to ${this._remote_ip}`);
 
                 this.do_handshake();
-
-                validate_transaction('').then((return_val) => {
-                    console.log(`transaciton validated as ${return_val}`);
-                })
-
                 resolve(true);
             });
 
