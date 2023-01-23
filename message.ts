@@ -1,9 +1,14 @@
 import * as t from 'io-ts';
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
 
+function _is_hex(str: string) {
+    let pattern = /[0-9A-Fa-f]{6}/g;
+    return str.match(pattern)
+}
+
 export function parse_message(received_message: string): MESSAGE_TYPES | INVALID_TYPES {
 
-    let result: MESSAGE_TYPES | INVALID_TYPES;
+    let result: MESSAGE_TYPES | INVALID_TYPES = INVALID_TYPES.INVALID_MESSAGE;
 
     try {
 
@@ -107,7 +112,70 @@ export function parse_message(received_message: string): MESSAGE_TYPES | INVALID
                     })
                 }));
                 if (OBJECT_RECEIVED_TYPE.decode(parsed_json)._tag === "Right") {
-                    result = (MESSAGE_TYPES.OBJECT_RECEIVED);
+
+                    const BLOCK_TYPE = t.exact(t.type({
+                        type: t.string,
+                        txids: t.array(t.string),
+                        nonce: t.string,
+                        previd: t.string,
+                        created: t.number,
+                        T: t.string,
+                    }));
+
+                    const TRANSACTION_TYPE = t.exact(t.type({
+                        type: t.string,
+                        inputs: t.array(t.type({
+                            outpoint: t.type({
+                                txid: t.string,
+                                index: t.number,
+                            }),
+                            sig: t.string,
+                        })),
+                        outputs: t.array(t.type({
+                            pubkey: t.string,
+                            value: t.number,
+                        }))
+                    }));
+
+                    const COINBASE_TYPE = t.exact(t.type({
+                        type: t.string,
+                        height: t.number,
+                        outputs: t.array(t.type({
+                            pubkey: t.string,
+                            value: t.number,
+                        }))
+                    }));
+
+                    if (BLOCK_TYPE.decode(parsed_json['object']._tag === "Right") && parsed_json['type'] == 'block') {
+                        result = MESSAGE_TYPES.BLOCK_RECEIVED;
+                    } else if (TRANSACTION_TYPE.decode(parsed_json['object']._tag === "Right") && parsed_json['type'] == 'transaction') {
+                        let valid_transaction: Boolean = true;
+
+                        for (const input of parsed_json["input"]) {
+                            const outpoint = input['outpoint']
+                            if (!_is_hex(input['sig']) || input['sig'].length != 128 || outpoint['index'] < 0) {
+                                valid_transaction = false;
+                            }
+                        }
+
+                        for (const output of parsed_json["output"]) {
+                            if (!_is_hex(output['pubkey']) || output['pubkey'].length != 64 || output['value'] < 0) {
+                                valid_transaction = false;
+                            }
+                        }
+
+                        if (valid_transaction) {
+                            result = MESSAGE_TYPES.TRANSACTION_RECEIVED;
+                        } else {
+                            result = INVALID_TYPES.INVALID_FORMAT;
+                        }
+
+                    } else if (COINBASE_TYPE.decode(parsed_json['object']._tag === "Right") && parsed_json['type'] == 'transaction') {
+                        result = MESSAGE_TYPES.COINBASE_RECEIVED;
+                    } else {
+                        result = INVALID_TYPES.INVALID_FORMAT;
+                    }
+
                 } else {
                     result = INVALID_TYPES.INVALID_FORMAT;
                 }
@@ -127,16 +195,12 @@ export function parse_message(received_message: string): MESSAGE_TYPES | INVALID
                 const ERROR_TYPE = t.exact(t.type({
                     type: t.string,
                     name: t.string,
-                    message: t.string,
                 }));
                 if (ERROR_TYPE.decode(parsed_json)._tag === "Right") {
                     result = (MESSAGE_TYPES.ERROR_RECEIVED);
                 } else {
                     result = INVALID_TYPES.INVALID_FORMAT;
                 }
-                break;
-            default:
-                result = (INVALID_TYPES.INVALID_MESSAGE);
                 break;
         }
     } catch (err) {
