@@ -263,15 +263,62 @@ export class SocketHandler {
 
     }
 
-    _handle_new_object(object: string, object_type: MESSAGE_TYPES): void {
+    async _handle_new_object(object: string, object_type: MESSAGE_TYPES) {
 
         switch (object_type) {
             case MESSAGE_TYPES.BLOCK_RECEIVED:
                 validate_block(object);
+                break;
             case MESSAGE_TYPES.TRANSACTION_RECEIVED:
-                validate_transaction(object);
+                const tx_error: void | INVALID_TYPES = await validate_transaction(object);
+                let error_message: any;
+                switch (tx_error) {
+
+                    case INVALID_TYPES.UNKNOWN_OBJECT:
+                        error_message =
+                        {
+                            "type": "error",
+                            "name": "UNKNOWN_OBJECT",
+                            "description": "The object requested is unknown."
+                        };
+                        this._write(error_message);
+                        this._fatal_error("received transaction with unknown object");
+                        return;
+                    case INVALID_TYPES.INVALID_TX_OUTPOINT:
+                        error_message =
+                        {
+                            "type": "error",
+                            "name": "INVALID_TX_OUTPOINT",
+                            "description": "The transaction outpoint index is too large."
+                        };
+                        this._write(error_message);
+                        this._fatal_error("transaction outpoint index is too large");
+                        return;
+                    case INVALID_TYPES.INVALID_TX_CONSERVATION:
+                        error_message =
+                        {
+                            "type": "error",
+                            "name": "INVALID_TX_CONSERVATION",
+                            "description": "The transaction does not satisfy the weak law of conservation."
+                        };
+                        this._write(error_message);
+                        this._fatal_error("transaction does not satisfy the weak law of conservation");
+                        return;
+                    case INVALID_TYPES.INVALID_TX_SIGNATURE:
+                        error_message =
+                        {
+                            "type": "error",
+                            "name": "INVALID_TX_SIGNATURE",
+                            "description": "The transaction signature is invalid."
+                        };
+                        this._write(error_message);
+                        this._fatal_error("transaction signature is invalid");
+                        return;
+                }
+                break;
             case MESSAGE_TYPES.COINBASE_RECEIVED:
                 validate_coinbase(object);
+                break;
         }
 
         try {
@@ -298,8 +345,7 @@ export class SocketHandler {
                 await db.put(object_id, object);
                 this._broadcast_new_object(object_id);
             } else {
-                const data = await db.get(object_id);
-                console.log("found existing object: ", data);
+                console.log(`found existing object: ${object_id}`);
             }
         } catch (err) {
             this._fatal_error("failed to save object");
@@ -340,7 +386,7 @@ export class SocketHandler {
             const has_object: Boolean = await db.exists(object_id);
             if (!has_object) {
                 const request_message = `{
-                    "type": "object",
+                    "type": "getobject",
                     "objectid": ${object_id},
                 }`
                 this._socket.write(request_message);
@@ -378,7 +424,7 @@ export class SocketHandler {
             return;
         }
 
-        console.log('Received: ' + data);
+        console.log(`Received from ${this._remote_ip}: ` + data);
 
         this._buffer += data.toString();
         if (this._buffer.length >= this._max_buffer_size) {

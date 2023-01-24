@@ -117,7 +117,7 @@ export function parse_message(received_message: string): MESSAGE_TYPES | INVALID
                         type: t.string,
                         txids: t.array(t.string),
                         nonce: t.string,
-                        previd: t.string,
+                        previd: t.union([t.string, t.null]),
                         created: t.number,
                         T: t.string,
                     }));
@@ -146,19 +146,20 @@ export function parse_message(received_message: string): MESSAGE_TYPES | INVALID
                         }))
                     }));
 
-                    if (BLOCK_TYPE.decode(parsed_json['object']._tag === "Right") && parsed_json['type'] == 'block') {
+                    if (BLOCK_TYPE.decode(parsed_json['object'])._tag === "Right" && parsed_json['object']['type'] == 'block') {
                         result = MESSAGE_TYPES.BLOCK_RECEIVED;
-                    } else if (TRANSACTION_TYPE.decode(parsed_json['object']._tag === "Right") && parsed_json['type'] == 'transaction') {
+                    } else if (TRANSACTION_TYPE.decode(parsed_json['object'])._tag === "Right" && parsed_json['object']['type'] == 'transaction') {
+
                         let valid_transaction: Boolean = true;
 
-                        for (const input of parsed_json["input"]) {
+                        for (const input of parsed_json['object']["inputs"]) {
                             const outpoint = input['outpoint']
-                            if (!_is_hex(input['sig']) || input['sig'].length != 128 || outpoint['index'] < 0) {
+                            if (!_is_hex(input['sig']) || input['sig'].length != 128 || outpoint['txid'].length != 64 || outpoint['index'] < 0) {
                                 valid_transaction = false;
                             }
                         }
 
-                        for (const output of parsed_json["output"]) {
+                        for (const output of parsed_json['object']["outputs"]) {
                             if (!_is_hex(output['pubkey']) || output['pubkey'].length != 64 || output['value'] < 0) {
                                 valid_transaction = false;
                             }
@@ -170,7 +171,7 @@ export function parse_message(received_message: string): MESSAGE_TYPES | INVALID
                             result = INVALID_TYPES.INVALID_FORMAT;
                         }
 
-                    } else if (COINBASE_TYPE.decode(parsed_json['object']._tag === "Right") && parsed_json['type'] == 'transaction') {
+                    } else if (COINBASE_TYPE.decode(parsed_json['object'])._tag === "Right" && parsed_json['object']['type'] == 'transaction') {
                         result = MESSAGE_TYPES.COINBASE_RECEIVED;
                     } else {
                         result = INVALID_TYPES.INVALID_FORMAT;
