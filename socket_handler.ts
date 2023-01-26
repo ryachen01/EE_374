@@ -2,12 +2,12 @@ import * as blake2 from 'blake2';
 import * as fs from 'fs';
 import * as net from 'net';
 import level from 'level-ts';
+import { EventEmitter } from "events";
 import { canonicalize } from 'json-canonicalize';
 import { parse_message } from './message';
 import { check_valid_ip, check_valid_dns } from './utils';
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
 import { validate_transaction, validate_coinbase, validate_block } from './validation'
-
 import peers_json from './peers.json'
 
 export class SocketHandler {
@@ -23,6 +23,8 @@ export class SocketHandler {
     _error_threshold: number = 50;
     _timeout_length: number = 10000;
     _max_buffer_size: number = 1000000;
+
+    _event_emitter = new EventEmitter();
 
 
     constructor(socket: net.Socket, remote_ip: string) {
@@ -221,19 +223,10 @@ export class SocketHandler {
 
     }
 
-    _try_new_peer(host: string, port: number): void {
-        const client = new net.Socket();
-        const remote_ip = `${host}:${port}`
-
-        const socket_handler = new SocketHandler(client, remote_ip);
-        socket_handler.connect(host, port);
-    }
-
     _handle_new_peers(message: string): void {
         try {
 
             const exisitng_peers: string[] = peers_json["peers"];
-
             const new_peers_json: any = JSON.parse(message);
             const new_peers_list: string[] = new_peers_json["peers"];
 
@@ -250,7 +243,7 @@ export class SocketHandler {
 
                         exisitng_peers.push(peer);
                         this._update_json_list("./peers.json", peers_json);
-                        this._try_new_peer(host, port);
+                        this._event_emitter.emit('newPeer', peer);
                     }
                 } else {
                     console.log("invalid ip: ", peer);
@@ -336,6 +329,10 @@ export class SocketHandler {
 
     async _save_object(object: string, object_id: string) {
 
+        if (this._socket.destroyed) {
+            return;
+        }
+
         const db = new level('./database');
 
         try {
@@ -356,24 +353,7 @@ export class SocketHandler {
     async _broadcast_new_object(object_id: string) {
 
         console.log("attempting broadcast");
-        const peers: string[] = peers_json["peers"];
-        for (const peer of peers) {
-            const ip_address_components = peer.split(":");
-            const host: string = ip_address_components[0];
-            const port: number = parseInt(ip_address_components[1]);
-            const client = new net.Socket();
-            const remote_ip = `${host}:${port}`
-
-            const socket_handler = new SocketHandler(client, remote_ip);
-            const connected: Boolean = await socket_handler.connect(host, port);
-            if (connected) {
-                const broadcast_message = {
-                    "type": "ihaveobject",
-                    "objectid": object_id,
-                }
-                socket_handler._write(broadcast_message);
-            }
-        }
+        this._event_emitter.emit('broadcast', object_id);
 
     }
 
@@ -382,17 +362,18 @@ export class SocketHandler {
         const db = new level('./database');
 
         try {
-            const object_id = JSON.parse(object)["objectid"];
+            const object_id: string = JSON.parse(object)["objectid"];
             const has_object: Boolean = await db.exists(object_id);
             if (!has_object) {
-                const request_message = `{
+                const request_message: any = {
                     "type": "getobject",
-                    "objectid": ${object_id},
-                }`
-                this._socket.write(request_message);
+                    "objectid": object_id
+                }
+                this._write(request_message);
             }
 
         } catch (err) {
+            console.error(err);
             this._fatal_error("failed to handle object broadcast");
         }
     }
