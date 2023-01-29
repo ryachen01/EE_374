@@ -269,6 +269,36 @@ export class SocketHandler {
                             "name": "INVALID_BLOCK_POW",
                             "description": "The block proof-of-work is invalid.",
                         }
+                        this._write(error_message);
+                        this._fatal_error("block proof-of-work is invalid");
+                        return;
+                    case INVALID_TYPES.INVALID_BLOCK_COINBASE:
+                        error_message = {
+                            "type": "error",
+                            "name": "INVALID_BLOCK_COINBASE",
+                            "description": "The block coinbase transaction is invalid."
+                        }
+                        this._write(error_message);
+                        this._fatal_error("block coinbase transaction is invalid");
+                        return;
+                    case INVALID_TYPES.UNFINDABLE_OBJECT:
+                        error_message = {
+                            "type": "error",
+                            "name": "UNFINDABLE_OBJECT",
+                            "description": "The object requested could not be found in the node's network."
+                        }
+                        this._write(error_message);
+                        this._fatal_error("object requested could not be found in the node's network");
+                        return;
+                    case INVALID_TYPES.INVALID_TX_OUTPOINT:
+                        error_message = {
+                            "type": "error",
+                            "name": "INVALID_TX_OUTPOINT",
+                            "description": "The transaction outpoint index is too large."
+                        }
+                        this._write(error_message);
+                        this._fatal_error("transaction outpoint index is too large");
+                        return;
                 }
                 break;
             case MESSAGE_TYPES.TRANSACTION_RECEIVED:
@@ -289,10 +319,10 @@ export class SocketHandler {
                         {
                             "type": "error",
                             "name": "INVALID_TX_OUTPOINT",
-                            "description": "The transaction outpoint index is too large."
+                            "description": "A transaction outpoint is incorrect."
                         };
                         this._write(error_message);
-                        this._fatal_error("transaction outpoint index is too large");
+                        this._fatal_error("transaction outpoint is incorrect");
                         return;
                     case INVALID_TYPES.INVALID_TX_CONSERVATION:
                         error_message =
@@ -323,7 +353,7 @@ export class SocketHandler {
 
         try {
             const json_object = JSON.parse(object)["object"];
-            const hash_output = _hash_object(object);
+            const hash_output = _hash_object(json_object);
             this._save_object(json_object, hash_output);
         } catch (err) {
             this._non_fatal_error("failed to handle object");

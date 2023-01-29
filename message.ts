@@ -202,16 +202,18 @@ export function parse_message(received_message: string): MESSAGE_TYPES | INVALID
                         }
 
                         for (const tx_id of parsed_json['object']['txids']) {
-                            if (tx_id.length != 64) {
+                            if (tx_id.length != 64 || !_is_hex(tx_id)) {
                                 valid_transaction = false;
                             }
                         }
 
-                        if (parsed_json['object']['nonce'].length != 64 || parsed_json['object']['T'].length != 64) {
+                        if (parsed_json['object']['nonce'].length != 64 || parsed_json['object']['T'].length != 64
+                            || !_is_hex(parsed_json['object']['nonce'] || !_is_hex(parsed_json['object']['T']))) {
+
                             valid_transaction = false;
                         }
 
-                        if (parsed_json['object']['previd'] != null && parsed_json['object']['previd'].length != 64) {
+                        if (parsed_json['object']['previd'] != null && (parsed_json['object']['previd'].length != 64 || !_is_hex(parsed_json['object']['previd']))) {
                             valid_transaction = false;
                         }
 
@@ -251,7 +253,26 @@ export function parse_message(received_message: string): MESSAGE_TYPES | INVALID
                         }
 
                     } else if (object_type == OBJECT_TYPES.COINBASE_TYPE) {
-                        result = MESSAGE_TYPES.COINBASE_RECEIVED;
+                        let valid_transaction: Boolean = true;
+
+                        const outputs = parsed_json['object']["outputs"];
+                        if (outputs.length > 1) {
+                            valid_transaction = false;
+                        }
+
+                        for (const output of parsed_json['object']["outputs"]) {
+                            const pubkey = output['pubkey']
+                            if (!_is_hex(output['pubkey']) || output['pubkey'].length != 64) {
+                                valid_transaction = false;
+                            }
+                        }
+
+                        if (valid_transaction) {
+                            result = MESSAGE_TYPES.COINBASE_RECEIVED;
+                        } else {
+                            result = INVALID_TYPES.INVALID_FORMAT;
+                        }
+
                     } else {
                         result = INVALID_TYPES.INVALID_FORMAT;
                     }
