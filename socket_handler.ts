@@ -7,7 +7,7 @@ import { canonicalize } from 'json-canonicalize';
 import { parse_message } from './message';
 import { check_valid_ip, check_valid_dns } from './utils';
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
-import { validate_transaction, validate_coinbase, validate_block } from './validation'
+import { _hash_object, validate_transaction, validate_coinbase, validate_block } from './validation'
 import peers_json from './peers.json'
 
 export class SocketHandler {
@@ -175,7 +175,6 @@ export class SocketHandler {
 
             case MESSAGE_TYPES.OBJECT_REQUEST:
                 this._check_handshake();
-
                 break;
             case MESSAGE_TYPES.BLOCK_RECEIVED:
                 this._check_handshake();
@@ -258,15 +257,23 @@ export class SocketHandler {
 
     async _handle_new_object(object: string, object_type: MESSAGE_TYPES) {
 
+        let tx_error: void | INVALID_TYPES;
+        let error_message: any;
         switch (object_type) {
             case MESSAGE_TYPES.BLOCK_RECEIVED:
-                validate_block(object);
+                tx_error = await validate_block(object, this._event_emitter);
+                switch (tx_error) {
+                    case INVALID_TYPES.INVALID_BLOCK_POW:
+                        error_message = {
+                            "type": "error",
+                            "name": "INVALID_BLOCK_POW",
+                            "description": "The block proof-of-work is invalid.",
+                        }
+                }
                 break;
             case MESSAGE_TYPES.TRANSACTION_RECEIVED:
-                const tx_error: void | INVALID_TYPES = await validate_transaction(object);
-                let error_message: any;
+                tx_error = await validate_transaction(object);
                 switch (tx_error) {
-
                     case INVALID_TYPES.UNKNOWN_OBJECT:
                         error_message =
                         {
@@ -315,12 +322,8 @@ export class SocketHandler {
         }
 
         try {
-            const blake_hash = blake2.createHash('blake2s');
             const json_object = JSON.parse(object)["object"];
-            const canonicalized_json = canonicalize(json_object)
-            const hash_input = Buffer.from(canonicalized_json);
-            blake_hash.update(hash_input);
-            const hash_output = blake_hash.digest("hex");
+            const hash_output = _hash_object(object);
             this._save_object(json_object, hash_output);
         } catch (err) {
             this._non_fatal_error("failed to handle object");

@@ -34,3 +34,10 @@ export enum INVALID_TYPES {
     INVALID_GENESIS = 29,
     INVALID_MESSAGE = 30,
 }
+
+export enum OBJECT_TYPES {
+    BLOCK_TYPE = 31,
+    TRANSACTION_TYPE = 32,
+    COINBASE_TYPE = 33,
+    INVALID_OBJECT = 34,
+}

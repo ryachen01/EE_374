@@ -83,7 +83,7 @@ export class Node {
             }
         })
 
-        socket_handler._event_emitter.on("broadcast", async (object_id: string) => {
+        socket_handler._event_emitter.on("broadcast", (object_id: string) => {
             const broadcast_message: any = {
                 "type": "ihaveobject",
                 "objectid": object_id,
@@ -93,6 +93,20 @@ export class Node {
                 socket_handler._write(broadcast_message);
             }
         })
+
+        socket_handler._event_emitter.on("unknownObjects", (unknown_tx_ids: string[]) => {
+            for (const unknown_tx_id of unknown_tx_ids) {
+                const broadcast_message: any = {
+                    "type": "getobject",
+                    "objectid": unknown_tx_id,
+                }
+                for (const connection of this._connections) {
+                    const socket_handler = connection.socket_handler;
+                    socket_handler._write(broadcast_message);
+                }
+            }
+        })
+
 
         socket_handler._socket.on('close', () => {
             for (let i = 0; i < this._connections.length; i++) {
