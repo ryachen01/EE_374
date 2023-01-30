@@ -3,8 +3,8 @@ import * as ed from "@noble/ed25519";
 import level from "level-ts";
 import { EventEmitter } from "events";
 import { canonicalize } from "json-canonicalize";
-import { parse_object } from './message';
-import { INVALID_TYPES, OBJECT_TYPES } from "./types";
+import { INVALID_TYPES, MESSAGE_TYPES, OBJECT_TYPES } from "./types";
+import { parse_object } from './utils'
 
 
 function hexToBytes(hex: string, encoding: BufferEncoding): Uint8Array {
@@ -231,7 +231,7 @@ async function _check_coinbase(object: string): Promise<Boolean> {
         for (let i = 0; i < tx_ids.length; i++) {
             const transaction = await db.get(tx_ids[i]);
             const transaction_type = parse_object(transaction);
-            if (transaction_type == OBJECT_TYPES.COINBASE_TYPE && i != 0) {
+            if (transaction_type == MESSAGE_TYPES.COINBASE_RECEIVED && i != 0) {
                 return false;
             }
         }
@@ -251,7 +251,7 @@ async function _check_coinbase_spend(object: string): Promise<Boolean> {
         for (const tx_id of tx_ids) {
             const transaction = await db.get(tx_id);
             const transaction_type = parse_object(transaction);
-            if (transaction_type == OBJECT_TYPES.COINBASE_TYPE) {
+            if (transaction_type == MESSAGE_TYPES.COINBASE_RECEIVED) {
                 coinbase_id = tx_id;
             } else {
                 const tx_inputs = transaction['inputs'];
@@ -282,7 +282,7 @@ async function _check_coinbase_conservation(object: string): Promise<Boolean> {
         for (const tx_id of tx_ids) {
             const transaction = await db.get(tx_id);
             const transaction_type = parse_object(transaction);
-            if (transaction_type == OBJECT_TYPES.COINBASE_TYPE) {
+            if (transaction_type == MESSAGE_TYPES.COINBASE_RECEIVED) {
                 coinbase_amount = transaction['outputs'][0]['value'];
             } else {
                 let tx_input_amount: number = 0;
@@ -321,7 +321,7 @@ async function _validate_utxo_set(object: string): Promise<Boolean> {
         for (const tx_id of tx_ids) {
             const transaction = await object_db.get(tx_id);
             const transaction_type = parse_object(transaction);
-            if (transaction_type == OBJECT_TYPES.COINBASE_TYPE) {
+            if (transaction_type == MESSAGE_TYPES.COINBASE_RECEIVED) {
             } else {
                 for (const input of transaction['inputs']) {
                     const outpoint = input['outpoint'];

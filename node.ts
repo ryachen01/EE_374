@@ -107,7 +107,6 @@ export class Node {
             }
         })
 
-
         socket_handler._socket.on('close', () => {
             for (let i = 0; i < this._connections.length; i++) {
                 if (this._connections[i].ip_address == socket_handler._remote_ip) {
