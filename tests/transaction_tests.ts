@@ -18,21 +18,21 @@ async function test_creating_tx() {
     };
     test_node._write(hello_message);
     const private_key = ed.utils.randomPrivateKey();
-    const coinbase_tx = await make_coinbase_tx(private_key, 5000000000);
+    const coinbase_tx = await make_coinbase_tx(private_key, 10000);
     const coinbase_id = _hash_object(coinbase_tx);
     test_node._write({ "type": "object", "object": coinbase_tx });
     await sleep(500);
 
     const private_key2 = ed.utils.randomPrivateKey();
-    const coinbase_tx_2 = await make_coinbase_tx(private_key2, 5000000000);
+    const coinbase_tx_2 = await make_coinbase_tx(private_key2, 10000);
     const coinbase_id_2 = _hash_object(coinbase_tx_2);
     test_node._write({ "type": "object", "object": coinbase_tx_2 });
-    await sleep(500);
+    await sleep(1500);
 
     const output_private_key = ed.utils.randomPrivateKey();
-    const output_public_key = bytesToHex(await ed.getPublicKey(private_key));
+    const output_public_key = bytesToHex(await ed.getPublicKey(output_private_key));
 
-    const tx = await make_tx([coinbase_id, coinbase_id_2], [0, 0], [private_key, private_key2], [output_public_key], [10000]);
+    const tx = await make_tx([coinbase_id, coinbase_id_2], [0, 0], [private_key, private_key2], [output_public_key], [20000]);
     test_node._write({ "type": "object", "object": tx })
 
 }

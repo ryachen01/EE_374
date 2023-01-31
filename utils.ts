@@ -61,7 +61,8 @@ export function parse_object(object: any): MESSAGE_TYPES | INVALID_TYPES {
         nonce: z.string().length(64).regex(hex_regex),
         previd: z.union([z.string().length(64).regex(hex_regex), z.null()]),
         created: z.number(),
-        T: z.literal('00000000abc00000000000000000000000000000000000000000000000000000'),
+        // T: z.literal('00000000abc00000000000000000000000000000000000000000000000000000'),
+        T: z.string(),
         miner: z.string().max(128).optional(),
         note: z.string().max(128).optional(),
         studentids: z.array(z.string().max(128)).max(10).optional()
@@ -162,8 +163,6 @@ export async function make_tx(tx_ids: string[], indices: number[], private_keys:
 
 
     const canonicalized_tx = canonicalize(tx);
-
-    console.log(canonicalized_tx);
 
     for (let i = 0; i < private_keys.length; i++) {
         const sig: any = bytesToHex(await ed.sign(hexToBytes(canonicalized_tx, 'utf8'), private_keys[i]));

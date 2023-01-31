@@ -17,7 +17,6 @@ function sleep(ms: number) {
 
 export function _hash_object(object: any): string {
     const blake_hash = blake2.createHash('blake2s');
-    // const json_object = JSON.parse(object)["object"];
     const canonicalized_json = canonicalize(object)
     const hash_input = Buffer.from(canonicalized_json);
     blake_hash.update(hash_input);
@@ -309,32 +308,50 @@ async function _check_coinbase_conservation(object: string): Promise<Boolean> {
 async function _validate_utxo_set(object: string): Promise<Boolean> {
     const object_db = new level("./database");
     const utxo_db = new level("./utxos");
+
+    interface UTXO {
+        outpoint_id: string;
+        idx: number;
+    }
+
     try {
         const object_json = JSON.parse(object)['object'];
         const block_hash = _hash_object(object_json);
         const tx_ids = object_json['txids'];
+        let utxo_set: UTXO[];
         if (block_hash == '0000000052a0e645eca917ae1c196e0d0a4fb756747f29ef52594d68484bb5e2') {
-            return true;
+            utxo_set = [];
+        } else {
+            utxo_set = await utxo_db.get(object_json['previd']);
         }
-        let utxo_set = await utxo_db.get(object_json['previd']);
 
         for (const tx_id of tx_ids) {
             const transaction = await object_db.get(tx_id);
             const transaction_type = parse_object(transaction);
             if (transaction_type == MESSAGE_TYPES.COINBASE_RECEIVED) {
+
             } else {
                 for (const input of transaction['inputs']) {
                     const outpoint = input['outpoint'];
                     const outpoint_txid = outpoint['txid'];
                     const outpoint_idx = outpoint['index'];
-                    const utxo_key = `${outpoint_txid}_${outpoint_idx}`;
-                    delete utxo_set[utxo_key];
+                    let found_utxo: Boolean = false;
+                    for (let i = 0; i < utxo_set.length; i++) {
+                        if (utxo_set[i].outpoint_id == outpoint_txid && utxo_set[i].idx == outpoint_idx) {
+                            if (!found_utxo) {
+                                utxo_set.splice(i, 1);
+                                i--;
+                                found_utxo = true;
+                            } else {
+                                console.error("block has double spend");
+                                return false;
+                            }
+
+                        }
+                    }
                 }
-                for (let idx = 0; idx < transaction['outputs'].length; idx++) {
-                    const output = transaction['outputs'][idx];
-                    const output_key = `${output['pubkey']}_${idx}`;
-                    const value = output['value'];
-                    utxo_set[output_key] = value;
+                for (let i = 0; i < transaction['outputs'].length; i++) {
+                    utxo_set.push({ outpoint_id: tx_id, idx: i });
                 }
             }
         }
@@ -347,8 +364,6 @@ async function _validate_utxo_set(object: string): Promise<Boolean> {
         return false;
     }
 }
-
-
 
 export async function validate_block(object: string, emitter: EventEmitter): Promise<void | INVALID_TYPES> {
     const valid_pow = _check_pow(object);

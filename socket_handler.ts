@@ -294,10 +294,10 @@ export class SocketHandler {
                         error_message = {
                             "type": "error",
                             "name": "INVALID_TX_OUTPOINT",
-                            "description": "The transaction outpoint index is too large."
+                            "description": "The transaction outpoint is incorrect."
                         }
                         this._write(error_message);
-                        this._fatal_error("transaction outpoint index is too large");
+                        this._fatal_error("transaction outpoint is incorrect");
                         return;
                 }
                 break;
@@ -319,10 +319,10 @@ export class SocketHandler {
                         {
                             "type": "error",
                             "name": "INVALID_TX_OUTPOINT",
-                            "description": "A transaction outpoint is incorrect."
+                            "description": "The transaction outpoint index is too large"
                         };
                         this._write(error_message);
-                        this._fatal_error("transaction outpoint is incorrect");
+                        this._fatal_error("transaction outpoint index is too large");
                         return;
                     case INVALID_TYPES.INVALID_TX_CONSERVATION:
                         error_message =
