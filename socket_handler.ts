@@ -23,6 +23,8 @@ export class SocketHandler {
     _error_threshold: number = 50;
     _timeout_length: number = 10000;
     _max_buffer_size: number = 1000000;
+    _cur_message_count: number = 0;
+    _message_threshold: number = 50;
 
     _event_emitter = new EventEmitter();
 
@@ -31,6 +33,15 @@ export class SocketHandler {
 
         this._socket = socket;
         this._remote_ip = remote_ip;
+
+        const rate_limiter = setInterval(() => {
+            if (this._cur_message_count > this._message_threshold) {
+                this._fatal_error("rate limited");
+                clearInterval(rate_limiter);
+            } else {
+                this._cur_message_count = 0;
+            }
+        }, 100);
 
         this._socket.on('data', (data: string) => {
             this._data_handler(data);
@@ -77,7 +88,7 @@ export class SocketHandler {
             connection_timer = setTimeout(() => {
                 this._fatal_error("failed to connect to node");
                 resolve(false);
-            }, 5000);
+            }, this._timeout_length);
 
             this._socket.connect(port, ip_address, () => {
                 clearTimeout(connection_timer);
@@ -446,6 +457,7 @@ export class SocketHandler {
         }
         let eom = this._buffer.indexOf('\n');
         while (eom != -1) {
+            this._cur_message_count++;
             if (this._timer_id) {
                 clearTimeout(this._timer_id);
                 this._timer_id = null;

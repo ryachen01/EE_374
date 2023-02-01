@@ -12,6 +12,9 @@ export function check_valid_ip(ip_address: string): Boolean {
             return false;
         }
         const host: string = ip_address_components[0];
+        if (host == '127.0.0.1') {
+            return false;
+        }
         const port: number = parseInt(ip_address_components[1]);
 
         if (net.isIP(host) == 0) {
@@ -61,8 +64,8 @@ export function parse_object(object: any): MESSAGE_TYPES | INVALID_TYPES {
         nonce: z.string().length(64).regex(hex_regex),
         previd: z.union([z.string().length(64).regex(hex_regex), z.null()]),
         created: z.number(),
-        // T: z.literal('00000000abc00000000000000000000000000000000000000000000000000000'),
-        T: z.string(),
+        T: z.literal('00000000abc00000000000000000000000000000000000000000000000000000'),
+        // T: z.string(), // for testing purposes
         miner: z.string().max(128).optional(),
         note: z.string().max(128).optional(),
         studentids: z.array(z.string().max(128)).max(10).optional()

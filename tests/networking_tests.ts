@@ -47,7 +47,7 @@ async function test_reconnection() {
 async function test_valid_get_peers() {
   const test_node = new LightNode();
 
-  let json_message: any = {
+  const json_message: any = {
     type: "hello",
     version: "0.9.0",
     agent: "Marabu Test Client",
@@ -64,8 +64,7 @@ async function test_valid_get_peers() {
 // 6. Get peers segmented message return valid peers ✅
 function test_segmented_message() {
   const test_node = new LightNode();
-
-  let json_message: any = {
+  const json_message: any = {
     type: "hello",
     version: "0.9.0",
     agent: "Marabu Test Client",
@@ -81,7 +80,7 @@ function test_segmented_message() {
 // 7. Get peers before hello should be invalid handshake ✅
 async function test_handshake() {
   const test_node = new LightNode();
-  let json_message: any = {
+  const json_message: any = {
     type: "getpeers",
   };
   test_node._write(json_message);
@@ -90,8 +89,7 @@ async function test_handshake() {
 // 8. Invalid messages invoke "INVALID_FORMAT" error ✅
 async function test_invalid_messages() {
   const test_node = new LightNode();
-
-  let json_message: any = {
+  const json_message: any = {
     type: "hello",
     version: "0.9.0",
     agent: "Marabu Test Client",
@@ -140,7 +138,7 @@ async function test_update_peers() {
   await reset_peer_list();
 
   const test_node = new LightNode();
-  let json_message: any = {
+  const json_message: any = {
     type: "hello",
     version: "0.9.0",
     agent: "Marabu Test Client",
@@ -199,7 +197,7 @@ async function test_update_peers() {
 // segmented message (no timeout)
 async function test_buffer() {
   const test_node = new LightNode();
-  let json_message: any = {
+  const json_message: any = {
     type: "hello",
     version: "0.9.0",
     agent: "Marabu Test Client",
@@ -233,7 +231,6 @@ async function test_buffer() {
 // segmented message (timeout)
 async function test_buffer_timeout() {
   const test_node = new LightNode();
-
   const message_1: string = `{"type": "hello" "ver`;
 
   test_node._client.write(message_1);
@@ -258,30 +255,16 @@ async function test_buffer_overflow() {
   }
 }
 
-async function test_valid_coinbase() {
+function test_rate_limiting() {
   const test_node = new LightNode();
-  let json_message: any = {
+  const json_message: any = {
     type: "hello",
     version: "0.9.0",
     agent: "Marabu Test Client",
   };
-  test_node._write(json_message);
-
-  let json_coinbase_message: any = {
-    object: {
-      height: 0,
-      outputs: [
-        {
-          pubkey:
-            "8dbcd2401c89c04d6e53c81c90aa0b551cc8fc47c0469217c8f5cfbae1e911f9",
-          value: 50000000000,
-        },
-      ],
-      type: "transaction",
-    },
-    type: "object",
-  };
-  test_node._write(json_coinbase_message);
+  for (let i = 0; i < 1000; i++) {
+    test_node._write(json_message);
+  }
 }
 
-test_buffer_timeout(); // change this to test whatever test you want to run
+test_rate_limiting(); // change this to test whatever test you want to run
