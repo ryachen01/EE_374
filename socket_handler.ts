@@ -21,7 +21,7 @@ export class SocketHandler {
 
     _error_count: number = 0;
     _error_threshold: number = 50;
-    _timeout_length: number = 10000;
+    _timeout_length: number = 3000;
     _max_buffer_size: number = 1000000;
     _cur_message_count: number = 0;
     _message_threshold: number = 50;
@@ -41,7 +41,7 @@ export class SocketHandler {
             } else {
                 this._cur_message_count = 0;
             }
-        }, 100);
+        }, 250);
 
         this._socket.on('data', (data: string) => {
             this._data_handler(data);
@@ -320,7 +320,7 @@ export class SocketHandler {
                         {
                             "type": "error",
                             "name": "UNKNOWN_OBJECT",
-                            "description": "The object requested is unknown."
+                            "description": "The transaction has an unknown object."
                         };
                         this._write(error_message);
                         this._fatal_error("received transaction with unknown object");
@@ -404,7 +404,6 @@ export class SocketHandler {
     async _handle_object_broadcast(object: string) {
 
         const db = new level('./database');
-
         try {
             const object_id: string = JSON.parse(object)["objectid"];
             const has_object: Boolean = await db.exists(object_id);

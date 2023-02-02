@@ -329,7 +329,9 @@ async function _validate_utxo_set(object: string): Promise<Boolean> {
             const transaction = await object_db.get(tx_id);
             const transaction_type = parse_object(transaction);
             if (transaction_type == MESSAGE_TYPES.COINBASE_RECEIVED) {
-
+                for (let i = 0; i < transaction['outputs'].length; i++) {
+                    utxo_set.push({ outpoint_id: tx_id, idx: i });
+                }
             } else {
                 for (const input of transaction['inputs']) {
                     const outpoint = input['outpoint'];
@@ -338,16 +340,13 @@ async function _validate_utxo_set(object: string): Promise<Boolean> {
                     let found_utxo: Boolean = false;
                     for (let i = 0; i < utxo_set.length; i++) {
                         if (utxo_set[i].outpoint_id == outpoint_txid && utxo_set[i].idx == outpoint_idx) {
-                            if (!found_utxo) {
-                                utxo_set.splice(i, 1);
-                                i--;
-                                found_utxo = true;
-                            } else {
-                                console.error("block has double spend");
-                                return false;
-                            }
-
+                            utxo_set.splice(i, 1);
+                            i--;
+                            found_utxo = true;
                         }
+                    }
+                    if (!found_utxo) {
+                        return false;
                     }
                 }
                 for (let i = 0; i < transaction['outputs'].length; i++) {
