@@ -1,6 +1,5 @@
 import * as net from 'net';
 import { SocketHandler } from './socket_handler'
-import { EventEmitter } from "events";
 
 const port: number = 18018;
 

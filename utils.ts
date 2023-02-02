@@ -3,7 +3,7 @@ import * as net from 'net';
 import { canonicalize } from "json-canonicalize";
 import isValidDomain from 'is-valid-domain';
 import { z } from "zod";
-import { MESSAGE_TYPES, INVALID_TYPES, OBJECT_TYPES } from './types';
+import { MESSAGE_TYPES, INVALID_TYPES } from './types';
 
 export function check_valid_ip(ip_address: string): Boolean {
     try {
@@ -12,7 +12,7 @@ export function check_valid_ip(ip_address: string): Boolean {
             return false;
         }
         const host: string = ip_address_components[0];
-        if (host == '127.0.0.1') {
+        if (host == '127.0.0.1' || host == '135.181.112.99') {
             return false;
         }
         const port: number = parseInt(ip_address_components[1]);

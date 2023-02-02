@@ -3,7 +3,7 @@ import * as ed from "@noble/ed25519";
 import level from "level-ts";
 import { EventEmitter } from "events";
 import { canonicalize } from "json-canonicalize";
-import { INVALID_TYPES, MESSAGE_TYPES, OBJECT_TYPES } from "./types";
+import { INVALID_TYPES, MESSAGE_TYPES } from "./types";
 import { parse_object } from './utils'
 
 

@@ -236,7 +236,7 @@ export class SocketHandler {
     _handle_new_peers(message: string): void {
         try {
 
-            const exisitng_peers: string[] = peers_json["peers"];
+            let exisitng_peers: string[] = peers_json["peers"];
             const new_peers_json: any = JSON.parse(message);
             const new_peers_list: string[] = new_peers_json["peers"];
 
@@ -456,6 +456,9 @@ export class SocketHandler {
         }
         let eom = this._buffer.indexOf('\n');
         while (eom != -1) {
+            if (this._socket.destroyed || this._cur_message_count > this._message_threshold) {
+                return;
+            }
             this._cur_message_count++;
             if (this._timer_id) {
                 clearTimeout(this._timer_id);
