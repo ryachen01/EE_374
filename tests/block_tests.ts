@@ -170,4 +170,144 @@ async function test_coinbase_conservation() {
     test_node._write({ "type": "object", "object": mine_block(block2) });
 }
 
-test_coinbase_conservation();
+
+async function test_recursive_block_validation() {
+
+    let blockchain: any = []
+    let blocks: any = {}
+    const chain_length = 5
+
+
+    let block = {
+        "T": "0000abc000000000000000000000000000000000000000000000000000000000",
+        "created": Date.now(),
+        "miner": "Test Miner",
+        "nonce": "",
+        "previd": "0000000052a0e645eca917ae1c196e0d0a4fb756747f29ef52594d68484bb5e2",
+        "txids": [],
+        "type": "block"
+    }
+
+    for (let i = 0; i < chain_length; i++) {
+
+        block = mine_block(block);
+        const block_hash = _hash_object(block);
+        blocks[block_hash] = block;
+        blockchain.push(block);
+        block = {
+            "T": "0000abc000000000000000000000000000000000000000000000000000000000",
+            "created": Date.now(),
+            "miner": "Test Miner",
+            "nonce": "",
+            "previd": block_hash,
+            "txids": [],
+            "type": "block"
+        }
+
+        console.log(`${i + 1} blocks mined`);
+    }
+
+    console.log(blockchain);
+
+    const test_node = new LightNode();
+    test_node._client.on("data", (data: string) => {
+        const messages = data.toString().split("\n");
+        for (const message of messages) {
+            if (message != "") {
+                const received_message = JSON.parse(message);
+                if (
+                    received_message.type == "getobject"
+                ) {
+                    const object_id = received_message.objectid;
+                    const requested_block = blocks[object_id];
+                    if (requested_block) {
+                        test_node._write({ "type": "object", "object": requested_block });
+                    }
+                }
+            }
+        }
+    });
+
+    const hello_message: any = {
+        type: "hello",
+        version: "0.9.0",
+        agent: "Marabu Test Client",
+    };
+    test_node._write(hello_message);
+    test_node._write({ "type": "object", "object": blockchain[chain_length - 1] });
+
+}
+
+async function test_recursive_block_validation_invalid() {
+
+    let blockchain: any = []
+    let blocks: any = {}
+    const chain_length = 5
+
+
+    let block = {
+        "T": "0000abc000000000000000000000000000000000000000000000000000000000",
+        "created": Date.now(),
+        "miner": "Test Miner",
+        "nonce": "",
+        "previd": "0000000052a0e645eca917ae1c196e0d0a4fb756747f29ef52594d68484bb5e2",
+        "txids": [],
+        "type": "block"
+    }
+
+    for (let i = 0; i < chain_length; i++) {
+
+        block = mine_block(block);
+        const block_hash = _hash_object(block);
+
+        if (i > 0) {
+            blocks[block_hash] = block; // we don't save the first mined block
+        }
+        blockchain.push(block);
+        block = {
+            "T": "0000abc000000000000000000000000000000000000000000000000000000000",
+            "created": 1671148800,
+            "miner": "Test Miner",
+            "nonce": "",
+            "previd": block_hash,
+            "txids": [],
+            "type": "block"
+        }
+
+        console.log(`${i + 1} blocks mined`);
+    }
+
+    console.log(blockchain);
+
+    const test_node = new LightNode();
+    test_node._client.on("data", (data: string) => {
+        const messages = data.toString().split("\n");
+        for (const message of messages) {
+            if (message != "") {
+                const received_message = JSON.parse(message);
+                if (
+                    received_message.type == "getobject"
+                ) {
+                    const object_id = received_message.objectid;
+                    const requested_block = blocks[object_id];
+                    if (requested_block) {
+                        test_node._write({ "type": "object", "object": requested_block });
+                    }
+                }
+            }
+        }
+    });
+
+    const hello_message: any = {
+        type: "hello",
+        version: "0.9.0",
+        agent: "Marabu Test Client",
+    };
+    test_node._write(hello_message);
+    test_node._write({ "type": "object", "object": blockchain[chain_length - 1] });
+
+}
+
+
+
+test_recursive_block_validation();

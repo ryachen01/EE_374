@@ -270,6 +270,20 @@ export class SocketHandler {
 
         let tx_error: void | INVALID_TYPES;
         let error_message: any;
+
+        try {
+            const json_object = JSON.parse(object)["object"];
+            const hash_output = _hash_object(json_object);
+            const db = new level("./database");
+            if (await db.exists(hash_output)) {
+                return;
+            }
+        } catch (err) {
+            console.error(err);
+            return;
+        }
+
+
         switch (object_type) {
             case MESSAGE_TYPES.BLOCK_RECEIVED:
                 tx_error = await validate_block(object, this._event_emitter);
