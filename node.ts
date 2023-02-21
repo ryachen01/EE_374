@@ -10,7 +10,8 @@ interface Connection {
 
 export class Node {
 
-
+    _longest_chain: string = '0000000052a0e645eca917ae1c196e0d0a4fb756747f29ef52594d68484bb5e2'
+    _chain_length: number = 1
     _connections: Connection[] = []
 
     connect(ip_address: string) {
@@ -104,6 +105,23 @@ export class Node {
                     socket_handler._write(broadcast_message);
                 }
             }
+        })
+
+        socket_handler._event_emitter.on("updateChain", (chain: [string, number]) => {
+            const chaintip: string = chain[0];
+            const chain_length: number = chain[1];
+            if (chain_length > this._chain_length) {
+                this._chain_length = chain_length;
+                this._longest_chain = chaintip;
+            }
+        })
+
+        socket_handler._event_emitter.on("chaintipRequest", () => {
+            const json_message = {
+                "type": "chaintip",
+                "blockid": this._longest_chain,
+            };
+            socket_handler._write(json_message);
         })
 
         socket_handler._socket.on('close', () => {

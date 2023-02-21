@@ -105,7 +105,6 @@ export class SocketHandler {
             });
 
         });
-
     }
 
     _send_hello() {
@@ -124,9 +123,17 @@ export class SocketHandler {
         this._write(json_message);
     }
 
+    _request_chaintip() {
+        const json_message = {
+            "type": "getchaintip",
+        }
+        this._write(json_message);
+    }
+
     do_handshake() {
         this._send_hello();
         this._request_peers();
+        this._request_chaintip();
     }
 
     _check_handshake() {
@@ -179,6 +186,7 @@ export class SocketHandler {
 
             case MESSAGE_TYPES.CHAINTIP_REQUEST:
                 this._check_handshake();
+                this._event_emitter.emit("chaintipRequest");
                 break;
             case MESSAGE_TYPES.CHAINTIP_RECEIVED:
                 this._check_handshake();
@@ -266,9 +274,27 @@ export class SocketHandler {
 
     }
 
+    async _update_longest_chain(object: string) {
+        try {
+            const db = new level("./database");
+            let length: number = 1;
+            const json_object = JSON.parse(object)["object"];
+            const hash_output = _hash_object(json_object);
+            let parent_hash = json_object['previd'];
+            while (parent_hash) {
+                const parent_object = await db.get(parent_hash);
+                parent_hash = parent_object['previd'];
+                length++;
+            }
+            this._event_emitter.emit("updateChain", [hash_output, length]);
+        } catch (err) {
+            console.error(err);
+            return;
+        }
+    }
+
     async _handle_new_object(object: string, object_type: MESSAGE_TYPES) {
 
-        let tx_error: void | INVALID_TYPES;
         let error_message: any;
 
         try {
@@ -283,11 +309,10 @@ export class SocketHandler {
             return;
         }
 
-
         switch (object_type) {
             case MESSAGE_TYPES.BLOCK_RECEIVED:
-                tx_error = await validate_block(object, this._event_emitter);
-                switch (tx_error) {
+                let block_error: void | INVALID_TYPES = await validate_block(object, this._event_emitter);
+                switch (block_error) {
                     case INVALID_TYPES.INVALID_BLOCK_POW:
                         error_message = {
                             "type": "error",
@@ -324,10 +349,20 @@ export class SocketHandler {
                         this._write(error_message);
                         this._fatal_error("transaction outpoint is incorrect");
                         return;
+                    case INVALID_TYPES.INVALID_BLOCK_TIMESTAMP:
+                        error_message = {
+                            "type": "error",
+                            "name": "INVALID_BLOCK_TIMESTAMP",
+                            "description": "The block timestamp is invalid."
+                        }
+                        this._write(error_message);
+                        this._fatal_error("transaction outpoint is incorrect");
+                        return;
                 }
+                this._update_longest_chain(object);
                 break;
             case MESSAGE_TYPES.TRANSACTION_RECEIVED:
-                tx_error = await validate_transaction(object);
+                let tx_error: void | INVALID_TYPES = await validate_transaction(object);
                 switch (tx_error) {
                     case INVALID_TYPES.UNKNOWN_OBJECT:
                         error_message =
@@ -436,7 +471,6 @@ export class SocketHandler {
     }
 
     async _handle_object_request(message: string) {
-
         const db = new level('./database');
         try {
             const object_id = JSON.parse(message)["objectid"];
@@ -454,6 +488,24 @@ export class SocketHandler {
             this._fatal_error("failed to handle object request");
         }
 
+    }
+
+    async _handle_chaintip(message: string) {
+        const db = new level('./database');
+        try {
+            const block_id = JSON.parse(message)["blockid"];
+            const has_object: Boolean = await db.exists(block_id);
+            if (!has_object) {
+                const request_message = {
+                    "type": "getobject",
+                    "objectid": block_id,
+                }
+                this._write(request_message);
+            }
+
+        } catch (err) {
+            this._fatal_error("failed to handle chaintip");
+        }
     }
 
     _data_handler(data: string) {
@@ -491,6 +543,8 @@ export class SocketHandler {
                 this._handle_object_broadcast(message);
             } else if (message_type == MESSAGE_TYPES.OBJECT_REQUEST) {
                 this._handle_object_request(message);
+            } else if (message_type == MESSAGE_TYPES.CHAINTIP_RECEIVED) {
+                this._handle_chaintip(message);
             }
 
 

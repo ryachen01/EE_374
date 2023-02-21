@@ -116,13 +116,13 @@ export function bytesToHex(byteArray: any) {
     }).join('')
 }
 
-export async function make_coinbase_tx(private_key: any, value: number) {
+export async function make_coinbase_tx(private_key: any, value: number, height: number) {
 
     const public_key = bytesToHex(await ed.getPublicKey(private_key));
 
     const coinbase_tx = {
         "type": "transaction",
-        "height": 0,
+        "height": height,
         "outputs": [{
             "pubkey": public_key,
             "value": value,

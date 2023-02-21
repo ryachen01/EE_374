@@ -18,13 +18,13 @@ async function test_creating_tx() {
     };
     test_node._write(hello_message);
     const private_key = ed.utils.randomPrivateKey();
-    const coinbase_tx = await make_coinbase_tx(private_key, 10000);
+    const coinbase_tx = await make_coinbase_tx(private_key, 10000, 0);
     const coinbase_id = _hash_object(coinbase_tx);
     test_node._write({ "type": "object", "object": coinbase_tx });
     await sleep(500);
 
     const private_key2 = ed.utils.randomPrivateKey();
-    const coinbase_tx_2 = await make_coinbase_tx(private_key2, 10000);
+    const coinbase_tx_2 = await make_coinbase_tx(private_key2, 10000, 0);
     const coinbase_id_2 = _hash_object(coinbase_tx_2);
     test_node._write({ "type": "object", "object": coinbase_tx_2 });
     await sleep(1500);

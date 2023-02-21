@@ -36,7 +36,7 @@ async function test_valid_block() {
     };
     test_node._write(hello_message);
     const private_key = ed.utils.randomPrivateKey();
-    const coinbase_tx = await make_coinbase_tx(private_key, 5000000000);
+    const coinbase_tx = await make_coinbase_tx(private_key, 5000000000, 1);
     const coinbase_id = _hash_object(coinbase_tx);
     test_node._write({ "type": "object", "object": coinbase_tx });
     await sleep(500);
@@ -65,13 +65,13 @@ async function test_valid_multiple_blocks() {
     };
     test_node._write(hello_message);
     const private_key = ed.utils.randomPrivateKey();
-    const coinbase_tx = await make_coinbase_tx(private_key, 50000);
+    const coinbase_tx = await make_coinbase_tx(private_key, 50000, 1);
     const coinbase_id = _hash_object(coinbase_tx);
     test_node._write({ "type": "object", "object": coinbase_tx });
     await sleep(500);
 
     const private_key2 = ed.utils.randomPrivateKey();
-    const coinbase_tx_2 = await make_coinbase_tx(private_key2, 10000);
+    const coinbase_tx_2 = await make_coinbase_tx(private_key2, 10000, 1);
     const coinbase_id_2 = _hash_object(coinbase_tx_2);
     test_node._write({ "type": "object", "object": coinbase_tx_2 });
     await sleep(500);
@@ -122,7 +122,7 @@ async function test_coinbase_conservation() {
 
     const block_reward = 50 * 10 ** 12;
     const private_key = ed.utils.randomPrivateKey();
-    const coinbase_tx = await make_coinbase_tx(private_key, block_reward);
+    const coinbase_tx = await make_coinbase_tx(private_key, block_reward, 1);
     const coinbase_id = _hash_object(coinbase_tx);
     test_node._write({ "type": "object", "object": coinbase_tx });
     await sleep(500);
@@ -138,7 +138,7 @@ async function test_coinbase_conservation() {
     const tx_fee = block_reward - tx_value;
 
     const private_key2 = ed.utils.randomPrivateKey();
-    const coinbase_tx_2 = await make_coinbase_tx(private_key2, block_reward + tx_fee); // any more and the block should error
+    const coinbase_tx_2 = await make_coinbase_tx(private_key2, block_reward + tx_fee, 1); // any more and the block should error
     const coinbase_id_2 = _hash_object(coinbase_tx_2);
     test_node._write({ "type": "object", "object": coinbase_tx_2 });
     await sleep(500);
@@ -307,7 +307,5 @@ async function test_recursive_block_validation_invalid() {
     test_node._write({ "type": "object", "object": blockchain[chain_length - 1] });
 
 }
-
-
 
 test_recursive_block_validation();

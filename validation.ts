@@ -221,6 +221,26 @@ async function _check_txids(object: string, emitter: EventEmitter, retry_count: 
     }
 }
 
+async function _valid_coinbase_height(object_json: any, height: number): Promise<Boolean> {
+    if (height <= 0) {
+        return false;
+    }
+    const db = new level("./database");
+    try {
+        const parent_block_hash = object_json['previd'];
+        if (parent_block_hash == "0000000052a0e645eca917ae1c196e0d0a4fb756747f29ef52594d68484bb5e2") {
+            return height == 1;
+        } else {
+            const parent_block = await db.get(parent_block_hash);
+            return _valid_coinbase_height(parent_block, height - 1);
+        }
+
+    } catch (err) {
+        console.error(err);
+        return false;
+    }
+}
+
 async function _check_coinbase(object: string): Promise<Boolean> {
     const db = new level("./database");
     try {
@@ -231,6 +251,11 @@ async function _check_coinbase(object: string): Promise<Boolean> {
             const transaction_type = parse_object(transaction);
             if (transaction_type == MESSAGE_TYPES.COINBASE_RECEIVED && i != 0) {
                 return false;
+            } else if (transaction_type == MESSAGE_TYPES.COINBASE_RECEIVED && i == 0) {
+                const coinbase_height = transaction['height'];
+                if (!(await _valid_coinbase_height(object_json, coinbase_height))) {
+                    return false;
+                }
             }
         }
         return true;
@@ -375,6 +400,9 @@ async function _check_parent_block(object: string, emitter: EventEmitter, retry_
             return true;
         }
         const parent_hash = object_json['previd'];
+        if (!parent_hash) {
+            return false;
+        }
         if (await db.exists(parent_hash)) {
             return true;
         } else {
@@ -388,8 +416,27 @@ async function _check_parent_block(object: string, emitter: EventEmitter, retry_
         console.error(err);
         return false;
     }
-
 }
+
+async function _check_timestamp(object: string): Promise<Boolean> {
+    const db = new level("./database");
+    try {
+        const cur_time = Date.now()
+        const object_json = JSON.parse(object)['object'];
+        const block_timestamp = object_json['created']
+        const parent_hash = object_json['previd'];
+        if (!parent_hash) {
+            return block_timestamp < cur_time;
+        }
+        const parent_block = await db.get(parent_hash);
+        const parent_timestamp = parent_block['created']
+        return block_timestamp > parent_timestamp && block_timestamp < cur_time
+    } catch (err) {
+        console.error(err);
+        return false;
+    }
+}
+
 
 export async function validate_block(object: string, emitter: EventEmitter): Promise<void | INVALID_TYPES> {
 
@@ -401,6 +448,11 @@ export async function validate_block(object: string, emitter: EventEmitter): Pro
     const valid_parent = await _check_parent_block(object, emitter);
     if (!valid_parent) {
         return INVALID_TYPES.UNFINDABLE_OBJECT;
+    }
+
+    const valid_timestamp = await _check_timestamp(object);
+    if (!valid_timestamp) {
+        return INVALID_TYPES.INVALID_BLOCK_TIMESTAMP;
     }
 
     const valid_txids = await _check_txids(object, emitter);
