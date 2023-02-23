@@ -5,7 +5,7 @@ import level from 'level-ts';
 import { EventEmitter } from "events";
 import { canonicalize } from 'json-canonicalize';
 import { parse_message } from './message';
-import { check_valid_ip, check_valid_dns } from './utils';
+import { check_valid_ip, check_valid_dns, sleep } from './utils';
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
 import { _hash_object, validate_transaction, validate_coinbase, validate_block } from './validation'
 import peers_json from './peers.json'
@@ -19,12 +19,16 @@ export class SocketHandler {
     _buffer: string = "";
     _timer_id: NodeJS.Timeout | null = null;
 
+    // keeps track of blocks validating as part of recursive validation
+    // any errors these blocks make should result in an unfindable object error
+    _parent_blocks: Set<string> = new Set();
+
     _error_count: number = 0;
     _error_threshold: number = 50;
     _timeout_length: number = 3000;
     _max_buffer_size: number = 1000000;
     _cur_message_count: number = 0;
-    _message_threshold: number = 50;
+    _message_threshold: number = 100;
 
     _event_emitter = new EventEmitter();
 
@@ -151,83 +155,119 @@ export class SocketHandler {
 
     }
 
-    _handle_message(message_type: MESSAGE_TYPES | INVALID_TYPES): void {
+    _handle_message(message: string, message_type: MESSAGE_TYPES | INVALID_TYPES): void {
 
         let json_message: any = null;
 
-        switch (message_type) {
-            case MESSAGE_TYPES.HELLO_RECEIVED:
-                this._handshake_completed = true;
-                break;
-            case MESSAGE_TYPES.PEERS_REQUEST:
-                this._check_handshake();
-                const peers_list: string[] = peers_json["peers"];
-                json_message = {
-                    "type": "peers",
-                    "peers": peers_list,
-                }
-                this._write(json_message);
-                break;
-            case MESSAGE_TYPES.PEERS_RECEIVED:
-                this._check_handshake();
-                break;
+        try {
 
-            case MESSAGE_TYPES.MEMPOOL_REQUEST:
-                this._check_handshake();
-                json_message = {
-                    "type": "mempool",
-                    "txids": [],
-                }
-                this._write(json_message);
-                break;
-            case MESSAGE_TYPES.MEMPOOL_RECEIVED:
-                this._check_handshake();
-                break;
+            switch (message_type) {
+                case MESSAGE_TYPES.HELLO_RECEIVED:
+                    this._handshake_completed = true;
+                    break;
+                case MESSAGE_TYPES.PEERS_REQUEST:
+                    this._check_handshake();
+                    const peers_list: string[] = peers_json["peers"];
+                    json_message = {
+                        "type": "peers",
+                        "peers": peers_list,
+                    }
+                    this._write(json_message);
+                    break;
+                case MESSAGE_TYPES.PEERS_RECEIVED:
+                    this._check_handshake();
+                    break;
 
-            case MESSAGE_TYPES.CHAINTIP_REQUEST:
-                this._check_handshake();
-                this._event_emitter.emit("chaintipRequest");
-                break;
-            case MESSAGE_TYPES.CHAINTIP_RECEIVED:
-                this._check_handshake();
-                break;
+                case MESSAGE_TYPES.MEMPOOL_REQUEST:
+                    this._check_handshake();
+                    json_message = {
+                        "type": "mempool",
+                        "txids": [],
+                    }
+                    this._write(json_message);
+                    break;
+                case MESSAGE_TYPES.MEMPOOL_RECEIVED:
+                    this._check_handshake();
+                    break;
 
-            case MESSAGE_TYPES.OBJECT_REQUEST:
-                this._check_handshake();
-                break;
-            case MESSAGE_TYPES.BLOCK_RECEIVED:
-                this._check_handshake();
-                break;
-            case MESSAGE_TYPES.TRANSACTION_RECEIVED:
-                this._check_handshake();
-                break;
-            case MESSAGE_TYPES.COINBASE_RECEIVED:
-                this._check_handshake();
-                break;
-            case MESSAGE_TYPES.HAS_OBJECT:
-                this._check_handshake();
-                break;
-            case MESSAGE_TYPES.ERROR_RECEIVED:
-                break;
-            case INVALID_TYPES.INVALID_MESSAGE:
-                json_message =
-                {
-                    "type": "error",
-                    "name": "INVALID_FORMAT",
-                    "description": "The type of the received message is invalid"
-                };
-                this._write(json_message);
-                this._fatal_error("received message with invalid type");
-            case INVALID_TYPES.INVALID_FORMAT:
-                json_message =
-                {
-                    "type": "error",
-                    "name": "INVALID_FORMAT",
-                    "description": "The format of the received message is invalid."
-                };
-                this._write(json_message);
-                this._fatal_error("received invalid format");
-                break;
+                case MESSAGE_TYPES.CHAINTIP_REQUEST:
+                    this._check_handshake();
+                    this._event_emitter.emit("chaintipRequest");
+                    break;
+                case MESSAGE_TYPES.CHAINTIP_RECEIVED:
+                    this._check_handshake();
+                    break;
+
+                case MESSAGE_TYPES.OBJECT_REQUEST:
+                    this._check_handshake();
+                    break;
+                case MESSAGE_TYPES.BLOCK_RECEIVED:
+                    this._check_handshake();
+                    break;
+                case MESSAGE_TYPES.TRANSACTION_RECEIVED:
+                    this._check_handshake();
+                    break;
+                case MESSAGE_TYPES.COINBASE_RECEIVED:
+                    this._check_handshake();
+                    break;
+                case MESSAGE_TYPES.HAS_OBJECT:
+                    this._check_handshake();
+                    break;
+                case MESSAGE_TYPES.ERROR_RECEIVED:
+                    break;
+                case INVALID_TYPES.INVALID_MESSAGE:
+                    var json_object = JSON.parse(message)["object"];
+                    var hash_output = _hash_object(json_object);
+                    if (this._parent_blocks.has(hash_output)) {
+                        const error_message = {
+                            "type": "error",
+                            "name": "UNFINDABLE_OBJECT",
+                            "description": "The object requested could not be found in the node's network."
+                        }
+                        this._write(error_message);
+                        this._fatal_error("object requested could not be found in the node's network");
+                        this._parent_blocks.delete(hash_output);
+                        break;
+                    } else {
+                        json_message =
+                        {
+                            "type": "error",
+                            "name": "INVALID_FORMAT",
+                            "description": "The type of the received message is invalid"
+                        };
+                        this._write(json_message);
+                        this._fatal_error("received message with invalid type");
+                        break;
+                    }
+
+                case INVALID_TYPES.INVALID_FORMAT:
+                    var json_object = JSON.parse(message)["object"];
+                    var hash_output = _hash_object(json_object);
+                    if (this._parent_blocks.has(hash_output)) {
+                        const error_message = {
+                            "type": "error",
+                            "name": "UNFINDABLE_OBJECT",
+                            "description": "The object requested could not be found in the node's network."
+                        }
+                        this._write(error_message);
+                        this._fatal_error("object requested could not be found in the node's network");
+                        this._parent_blocks.delete(hash_output);
+                        break;
+                    } else {
+                        json_message =
+                        {
+                            "type": "error",
+                            "name": "INVALID_FORMAT",
+                            "description": "The format of the received message is invalid."
+                        };
+                        this._write(json_message);
+                        this._fatal_error("received invalid format");
+                        break;
+                    }
+            }
+        } catch (err) {
+            console.error(err);
+            return;
         }
     }
 
@@ -279,7 +319,7 @@ export class SocketHandler {
             const db = new level("./database");
             let length: number = 1;
             const json_object = JSON.parse(object)["object"];
-            const hash_output = _hash_object(json_object);
+            let hash_output = _hash_object(json_object);
             let parent_hash = json_object['previd'];
             while (parent_hash) {
                 const parent_object = await db.get(parent_hash);
@@ -293,13 +333,55 @@ export class SocketHandler {
         }
     }
 
+    async _check_parent_block(object: string, emitter: EventEmitter, retry_count: number = 0): Promise<Boolean> {
+        const db = new level("./database");
+        if (retry_count == 10) {
+            return false;
+        }
+        try {
+            const object_json = JSON.parse(object)['object'];
+            const block_hash = _hash_object(object_json);
+            if (block_hash == '0000000052a0e645eca917ae1c196e0d0a4fb756747f29ef52594d68484bb5e2') {
+                return true;
+            }
+            const parent_hash = object_json['previd'];
+            if (!parent_hash) {
+                if (!this._parent_blocks.has(block_hash)) {
+                    const error_message = {
+                        "type": "error",
+                        "name": "INVALID_GENESIS",
+                        "description": "The block has a previd of null but it isn't genesis.",
+                    }
+                    this._write(error_message);
+                    this._fatal_error("block has a previd of null but it isn't genesis");
+                }
+                return false;
+            }
+            if (await db.exists(parent_hash)) {
+                return true;
+            } else {
+                if (retry_count == 0) {
+                    this._parent_blocks.add(parent_hash);
+                    emitter.emit("unknownObjects", [parent_hash]); // because everything is recursive we end up spamming nodes with requests if we're missing even 1 block
+                }
+                await sleep(300);
+                return this._check_parent_block(object, emitter, retry_count + 1);
+            }
+        } catch (err) {
+            console.error(err);
+            return false;
+        }
+    }
+
     async _handle_new_object(object: string, object_type: MESSAGE_TYPES) {
 
         let error_message: any;
+        let json_object: any;
+        let hash_output: string;
 
         try {
-            const json_object = JSON.parse(object)["object"];
-            const hash_output = _hash_object(json_object);
+            json_object = JSON.parse(object)["object"];
+            hash_output = _hash_object(json_object);
             const db = new level("./database");
             if (await db.exists(hash_output)) {
                 return;
@@ -311,7 +393,35 @@ export class SocketHandler {
 
         switch (object_type) {
             case MESSAGE_TYPES.BLOCK_RECEIVED:
+
+                const valid_parent = await this._check_parent_block(object, this._event_emitter);
+                if (!valid_parent) {
+                    console.error("parent block has error");
+                    error_message = {
+                        "type": "error",
+                        "name": "UNFINDABLE_OBJECT",
+                        "description": "The object requested could not be found in the node's network."
+                    }
+                    this._write(error_message);
+                    this._fatal_error("object requested could not be found in the node's network");
+                    return;
+                }
+
                 let block_error: void | INVALID_TYPES = await validate_block(object, this._event_emitter);
+                if (this._parent_blocks.has(hash_output)) {
+                    if (block_error) {
+                        error_message = {
+                            "type": "error",
+                            "name": "UNFINDABLE_OBJECT",
+                            "description": "The object requested could not be found in the node's network."
+                        }
+                        this._write(error_message);
+                        this._fatal_error("object requested could not be found in the node's network");
+                        this._parent_blocks.delete(hash_output);
+                        return;
+                    }
+                    this._parent_blocks.delete(hash_output);
+                }
                 switch (block_error) {
                     case INVALID_TYPES.INVALID_BLOCK_POW:
                         error_message = {
@@ -356,7 +466,7 @@ export class SocketHandler {
                             "description": "The block timestamp is invalid."
                         }
                         this._write(error_message);
-                        this._fatal_error("transaction outpoint is incorrect");
+                        this._fatal_error("block timestamp is invalid");
                         return;
                 }
                 this._update_longest_chain(object);
@@ -412,8 +522,6 @@ export class SocketHandler {
         }
 
         try {
-            const json_object = JSON.parse(object)["object"];
-            const hash_output = _hash_object(json_object);
             this._save_object(json_object, hash_output);
         } catch (err) {
             this._non_fatal_error("failed to handle object");
@@ -533,7 +641,7 @@ export class SocketHandler {
             let message: string = this._buffer.substring(0, eom);
             let message_type: MESSAGE_TYPES | INVALID_TYPES = parse_message(message);
 
-            this._handle_message(message_type);
+            this._handle_message(message, message_type);
 
             if (message_type == MESSAGE_TYPES.PEERS_RECEIVED) {
                 this._handle_new_peers(message);

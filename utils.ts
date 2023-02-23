@@ -5,6 +5,11 @@ import isValidDomain from 'is-valid-domain';
 import { z } from "zod";
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
 
+
+export function sleep(ms: number) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export function check_valid_ip(ip_address: string): Boolean {
     try {
         const ip_address_components: string[] = ip_address.split(":");

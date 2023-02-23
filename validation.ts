@@ -388,40 +388,40 @@ async function _validate_utxo_set(object: string): Promise<Boolean> {
     }
 }
 
-async function _check_parent_block(object: string, emitter: EventEmitter, retry_count: number = 0): Promise<Boolean> {
-    const db = new level("./database");
-    if (retry_count == 10) {
-        return false;
-    }
-    try {
-        const object_json = JSON.parse(object)['object'];
-        const block_hash = _hash_object(object_json);
-        if (block_hash == '0000000052a0e645eca917ae1c196e0d0a4fb756747f29ef52594d68484bb5e2') {
-            return true;
-        }
-        const parent_hash = object_json['previd'];
-        if (!parent_hash) {
-            return false;
-        }
-        if (await db.exists(parent_hash)) {
-            return true;
-        } else {
-            if (retry_count == 0) {
-                emitter.emit("unknownObjects", [parent_hash]); // because everything is recursive we end up spamming nodes with requests if we're missing even 1 block
-            }
-            await sleep(300);
-            return _check_parent_block(object, emitter, retry_count + 1);
-        }
-    } catch (err) {
-        console.error(err);
-        return false;
-    }
-}
+// async function _check_parent_block(object: string, emitter: EventEmitter, retry_count: number = 0): Promise<Boolean> {
+//     const db = new level("./database");
+//     if (retry_count == 10) {
+//         return false;
+//     }
+//     try {
+//         const object_json = JSON.parse(object)['object'];
+//         const block_hash = _hash_object(object_json);
+//         if (block_hash == '0000000052a0e645eca917ae1c196e0d0a4fb756747f29ef52594d68484bb5e2') {
+//             return true;
+//         }
+//         const parent_hash = object_json['previd'];
+//         if (!parent_hash) {
+//             return false;
+//         }
+//         if (await db.exists(parent_hash)) {
+//             return true;
+//         } else {
+//             if (retry_count == 0) {
+//                 emitter.emit("unknownObjects", [parent_hash]); // because everything is recursive we end up spamming nodes with requests if we're missing even 1 block
+//             }
+//             await sleep(300);
+//             return _check_parent_block(object, emitter, retry_count + 1);
+//         }
+//     } catch (err) {
+//         console.error(err);
+//         return false;
+//     }
+// }
 
 async function _check_timestamp(object: string): Promise<Boolean> {
     const db = new level("./database");
     try {
-        const cur_time = Date.now()
+        const cur_time: number = Date.now() / 1000
         const object_json = JSON.parse(object)['object'];
         const block_timestamp = object_json['created']
         const parent_hash = object_json['previd'];
@@ -445,10 +445,10 @@ export async function validate_block(object: string, emitter: EventEmitter): Pro
         return INVALID_TYPES.INVALID_BLOCK_POW;
     }
 
-    const valid_parent = await _check_parent_block(object, emitter);
-    if (!valid_parent) {
-        return INVALID_TYPES.UNFINDABLE_OBJECT;
-    }
+    // const valid_parent = await _check_parent_block(object, emitter);
+    // if (!valid_parent) {
+    //     return INVALID_TYPES.UNFINDABLE_OBJECT;
+    // }
 
     const valid_timestamp = await _check_timestamp(object);
     if (!valid_timestamp) {
