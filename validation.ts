@@ -1,10 +1,10 @@
-import * as blake2 from 'blake2';
+
 import * as ed from "@noble/ed25519";
 import level from "level-ts";
 import { EventEmitter } from "events";
 import { canonicalize } from "json-canonicalize";
-import { INVALID_TYPES, MESSAGE_TYPES } from "./types";
-import { parse_object } from './utils'
+import { INVALID_TYPES, MESSAGE_TYPES, UTXO } from "./types";
+import { parse_object, _hash_object } from './utils'
 
 
 function hexToBytes(hex: string, encoding: BufferEncoding): Uint8Array {
@@ -13,16 +13,6 @@ function hexToBytes(hex: string, encoding: BufferEncoding): Uint8Array {
 
 function sleep(ms: number) {
     return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-export function _hash_object(object: any): string {
-    const blake_hash = blake2.createHash('blake2s');
-    const canonicalized_json = canonicalize(object)
-    const hash_input = Buffer.from(canonicalized_json);
-    blake_hash.update(hash_input);
-    const hash_output = blake_hash.digest("hex");
-
-    return hash_output;
 }
 
 async function _check_outpoint_objects(object: string): Promise<Boolean> {
@@ -145,6 +135,32 @@ async function _check_conservation(object: string): Promise<Boolean> {
     }
 }
 
+async function _check_no_double_spend(object: string): Promise<Boolean> {
+    try {
+        let input_map: any = {};
+        const object_json = JSON.parse(object)['object'];
+        const inputs = object_json["inputs"];
+        for (const input of inputs) {
+            const tx_id = input["outpoint"]["txid"];
+            const tx_index = input["outpoint"]["index"];
+            if (!input_map[tx_id]) {
+                input_map[tx_id] = [tx_index];
+            } else {
+                if (!(tx_index in input_map)) {
+                    input_map[tx_id].append(tx_index);
+                } else {
+                    return false;
+                }
+            }
+        }
+        return true;
+    } catch (err) {
+        console.error(err);
+        return false;
+    }
+
+}
+
 export async function validate_transaction(object: string): Promise<void | INVALID_TYPES> {
     try {
         const valid_outpoint_objects = await _check_outpoint_objects(object);
@@ -154,6 +170,11 @@ export async function validate_transaction(object: string): Promise<void | INVAL
 
         const valid_outpoint_indices = await _check_outpoint_indices(object);
         if (!valid_outpoint_indices) {
+            return INVALID_TYPES.INVALID_TX_OUTPOINT;
+        }
+
+        const valid_no_double_spend = await _check_no_double_spend(object);
+        if (!valid_no_double_spend) {
             return INVALID_TYPES.INVALID_TX_OUTPOINT;
         }
 
@@ -333,11 +354,6 @@ async function _validate_utxo_set(object: string): Promise<Boolean> {
     const object_db = new level("./database");
     const utxo_db = new level("./utxos");
 
-    interface UTXO {
-        outpoint_id: string;
-        idx: number;
-    }
-
     try {
         const object_json = JSON.parse(object)['object'];
         const block_hash = _hash_object(object_json);
@@ -379,6 +395,8 @@ async function _validate_utxo_set(object: string): Promise<Boolean> {
             }
         }
 
+        console.log("saving utxo set");
+        console.log(block_hash, utxo_set);
         utxo_db.put(block_hash, utxo_set);
         return true;
 

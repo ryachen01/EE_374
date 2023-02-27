@@ -1,3 +1,4 @@
+import * as blake2 from 'blake2';
 import * as ed from "@noble/ed25519";
 import * as net from 'net';
 import { canonicalize } from "json-canonicalize";
@@ -56,6 +57,16 @@ export function check_valid_dns(dns_address: string): Boolean {
     } catch (err: any) {
         return false;
     }
+}
+
+export function _hash_object(object: any): string {
+    const blake_hash = blake2.createHash('blake2s');
+    const canonicalized_json = canonicalize(object)
+    const hash_input = Buffer.from(canonicalized_json);
+    blake_hash.update(hash_input);
+    const hash_output = blake_hash.digest("hex");
+
+    return hash_output;
 }
 
 // must first check that input is a valid object

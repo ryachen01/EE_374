@@ -1,7 +1,6 @@
 import * as net from 'net';
 import { canonicalize } from 'json-canonicalize';
-import { _hash_object } from '../validation';
-import { make_coinbase_tx, make_tx, bytesToHex, check_valid_ip, check_valid_dns } from '../utils'
+import { make_coinbase_tx, make_tx, bytesToHex, check_valid_ip, check_valid_dns, _hash_object } from '../utils'
 import peers_json from '../peers.json'
 
 function sleep(ms: number) {

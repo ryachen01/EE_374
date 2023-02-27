@@ -41,3 +41,8 @@ export enum OBJECT_TYPES {
     COINBASE_TYPE = 33,
     INVALID_OBJECT = 34,
 }
+
+export interface UTXO {
+    outpoint_id: string;
+    idx: number;
+}

@@ -1,7 +1,6 @@
 import * as ed from "@noble/ed25519";
 import { LightNode } from './light_node';
-import { _hash_object } from '../validation';
-import { make_coinbase_tx, make_tx, bytesToHex } from '../utils'
+import { make_coinbase_tx, make_tx, bytesToHex, _hash_object } from '../utils'
 
 
 function sleep(ms: number) {

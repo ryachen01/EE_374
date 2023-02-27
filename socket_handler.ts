@@ -5,9 +5,9 @@ import level from 'level-ts';
 import { EventEmitter } from "events";
 import { canonicalize } from 'json-canonicalize';
 import { parse_message } from './message';
-import { check_valid_ip, check_valid_dns, sleep } from './utils';
+import { check_valid_ip, check_valid_dns, sleep, _hash_object } from './utils';
 import { MESSAGE_TYPES, INVALID_TYPES } from './types';
-import { _hash_object, validate_transaction, validate_coinbase, validate_block } from './validation'
+import { validate_transaction, validate_coinbase, validate_block } from './validation'
 import peers_json from './peers.json'
 
 export class SocketHandler {
@@ -180,11 +180,7 @@ export class SocketHandler {
 
                 case MESSAGE_TYPES.MEMPOOL_REQUEST:
                     this._check_handshake();
-                    json_message = {
-                        "type": "mempool",
-                        "txids": [],
-                    }
-                    this._write(json_message);
+                    this._event_emitter.emit("mempoolRequest");
                     break;
                 case MESSAGE_TYPES.MEMPOOL_RECEIVED:
                     this._check_handshake();
@@ -267,6 +263,14 @@ export class SocketHandler {
             }
         } catch (err) {
             console.error(err);
+            json_message =
+            {
+                "type": "error",
+                "name": "INVALID_FORMAT",
+                "description": "The format of the received message is invalid."
+            };
+            this._write(json_message);
+            this._fatal_error("received invalid format");
             return;
         }
     }
@@ -326,7 +330,7 @@ export class SocketHandler {
                 parent_hash = parent_object['previd'];
                 length++;
             }
-            this._event_emitter.emit("updateChain", [hash_output, length]);
+            this._event_emitter.emit("updateChain", [hash_output, length, json_object]);
         } catch (err) {
             console.error(err);
             return;
@@ -523,6 +527,9 @@ export class SocketHandler {
 
         try {
             this._save_object(json_object, hash_output);
+            if (object_type == MESSAGE_TYPES.COINBASE_RECEIVED || object_type == MESSAGE_TYPES.TRANSACTION_RECEIVED) {
+                this._event_emitter.emit("newMempoolTx", json_object);
+            }
         } catch (err) {
             this._non_fatal_error("failed to handle object");
         }
@@ -616,6 +623,15 @@ export class SocketHandler {
         }
     }
 
+    _handle_mempool(message: string) {
+        try {
+            const mempool_ids = JSON.parse(message)['txids']
+            this._event_emitter.emit("unknownObjects", mempool_ids);
+        } catch (err) {
+            this._fatal_error("failed to handle mempool");
+        }
+    }
+
     _data_handler(data: string) {
 
         if (this._socket.destroyed) {
@@ -653,8 +669,9 @@ export class SocketHandler {
                 this._handle_object_request(message);
             } else if (message_type == MESSAGE_TYPES.CHAINTIP_RECEIVED) {
                 this._handle_chaintip(message);
+            } else if (message_type == MESSAGE_TYPES.MEMPOOL_RECEIVED) {
+                this._handle_mempool(message);
             }
-
 
             this._buffer = this._buffer.substring(eom + 1)
             eom = this._buffer.indexOf('\n')
