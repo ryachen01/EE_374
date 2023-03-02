@@ -82,9 +82,11 @@ export class Node {
             const transaction_type = parse_object(transaction);
             const tx_id = _hash_object(transaction);
             if (transaction_type == MESSAGE_TYPES.COINBASE_RECEIVED) {
-                for (let i = 0; i < transaction['outputs'].length; i++) {
-                    this._mempool.push(tx_id);
-                    this._mempool_utxo_set.push({ outpoint_id: tx_id, idx: i });
+                if (transaction['height'] > this._chain_length) {
+                    for (let i = 0; i < transaction['outputs'].length; i++) {
+                        this._mempool.push(tx_id);
+                        this._mempool_utxo_set.push({ outpoint_id: tx_id, idx: i });
+                    }
                 }
             } else {
                 for (const input of transaction['inputs']) {
@@ -133,7 +135,7 @@ export class Node {
 
             for (let i = 0; i < new_chain.length; i++) {
                 if (new_chain[i][0] != current_chain[i][0]) {
-                    return [current_chain.splice(i), new_chain.splice(i)];
+                    return [current_chain.splice(i).map((block) => block[1]), new_chain.splice(i).map((block) => block[1])];
                 }
             }
 
@@ -250,6 +252,7 @@ export class Node {
                 "blockid": this._longest_chain,
             };
             socket_handler._write(json_message);
+            console.log(this._chain_length);
         })
 
         socket_handler._event_emitter.on("newMempoolTx", (transaction: any) => {

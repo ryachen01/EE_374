@@ -22,6 +22,7 @@ export class SocketHandler {
     // keeps track of blocks validating as part of recursive validation
     // any errors these blocks make should result in an unfindable object error
     _parent_blocks: Set<string> = new Set();
+    _currently_validating_blocks: Set<string> = new Set();
 
     _error_count: number = 0;
     _error_threshold: number = 50;
@@ -31,6 +32,7 @@ export class SocketHandler {
     _message_threshold: number = 100;
 
     _event_emitter = new EventEmitter();
+
 
 
     constructor(socket: net.Socket, remote_ip: string) {
@@ -339,7 +341,8 @@ export class SocketHandler {
 
     async _check_parent_block(object: string, emitter: EventEmitter, retry_count: number = 0): Promise<Boolean> {
         const db = new level("./database");
-        if (retry_count == 10) {
+        const validating_db = new level("./currently_validating_db");
+        if (retry_count >= 200) {
             return false;
         }
         try {
@@ -349,6 +352,7 @@ export class SocketHandler {
                 return true;
             }
             const parent_hash = object_json['previd'];
+
             if (!parent_hash) {
                 if (!this._parent_blocks.has(block_hash)) {
                     const error_message = {
@@ -364,6 +368,11 @@ export class SocketHandler {
             if (await db.exists(parent_hash)) {
                 return true;
             } else {
+
+                if (!(await validating_db.exists(parent_hash)) && retry_count >= 10) {
+                    return false;
+                }
+
                 if (retry_count == 0) {
                     this._parent_blocks.add(parent_hash);
                     emitter.emit("unknownObjects", [parent_hash]); // because everything is recursive we end up spamming nodes with requests if we're missing even 1 block
@@ -371,9 +380,24 @@ export class SocketHandler {
                 await sleep(300);
                 return this._check_parent_block(object, emitter, retry_count + 1);
             }
+
+
         } catch (err) {
             console.error(err);
             return false;
+        }
+    }
+
+    async remove_from_currently_validating_db(hash: string) {
+
+        try {
+            const db = new level("./currently_validating_db");
+            if (await db.exists(hash)) {
+                await db.del(hash);
+            }
+        } catch (err) {
+            console.error(err);
+            return;
         }
     }
 
@@ -397,7 +421,9 @@ export class SocketHandler {
 
         switch (object_type) {
             case MESSAGE_TYPES.BLOCK_RECEIVED:
-
+                // this._currently_validating_blocks.add(hash_output);
+                const db = new level("./currently_validating_db");
+                db.put(hash_output, null);
                 const valid_parent = await this._check_parent_block(object, this._event_emitter);
                 if (!valid_parent) {
                     console.error("parent block has error");
@@ -408,6 +434,9 @@ export class SocketHandler {
                     }
                     this._write(error_message);
                     this._fatal_error("object requested could not be found in the node's network");
+                    this._parent_blocks.delete(hash_output);
+                    // this._currently_validating_blocks.delete(hash_output);
+                    await this.remove_from_currently_validating_db(hash_output);
                     return;
                 }
 
@@ -422,9 +451,9 @@ export class SocketHandler {
                         this._write(error_message);
                         this._fatal_error("object requested could not be found in the node's network");
                         this._parent_blocks.delete(hash_output);
+                        await this.remove_from_currently_validating_db(hash_output);
                         return;
                     }
-                    this._parent_blocks.delete(hash_output);
                 }
                 switch (block_error) {
                     case INVALID_TYPES.INVALID_BLOCK_POW:
@@ -435,6 +464,8 @@ export class SocketHandler {
                         }
                         this._write(error_message);
                         this._fatal_error("block proof-of-work is invalid");
+                        this._parent_blocks.delete(hash_output);
+                        await this.remove_from_currently_validating_db(hash_output);
                         return;
                     case INVALID_TYPES.INVALID_BLOCK_COINBASE:
                         error_message = {
@@ -444,6 +475,8 @@ export class SocketHandler {
                         }
                         this._write(error_message);
                         this._fatal_error("block coinbase transaction is invalid");
+                        this._parent_blocks.delete(hash_output);
+                        await this.remove_from_currently_validating_db(hash_output);
                         return;
                     case INVALID_TYPES.UNFINDABLE_OBJECT:
                         error_message = {
@@ -453,6 +486,8 @@ export class SocketHandler {
                         }
                         this._write(error_message);
                         this._fatal_error("object requested could not be found in the node's network");
+                        this._parent_blocks.delete(hash_output);
+                        await this.remove_from_currently_validating_db(hash_output);
                         return;
                     case INVALID_TYPES.INVALID_TX_OUTPOINT:
                         error_message = {
@@ -462,6 +497,8 @@ export class SocketHandler {
                         }
                         this._write(error_message);
                         this._fatal_error("transaction outpoint is incorrect");
+                        this._parent_blocks.delete(hash_output);
+                        await this.remove_from_currently_validating_db(hash_output);
                         return;
                     case INVALID_TYPES.INVALID_BLOCK_TIMESTAMP:
                         error_message = {
@@ -471,9 +508,13 @@ export class SocketHandler {
                         }
                         this._write(error_message);
                         this._fatal_error("block timestamp is invalid");
+                        this._parent_blocks.delete(hash_output);
+                        await this.remove_from_currently_validating_db(hash_output);
                         return;
                 }
+                this._parent_blocks.delete(hash_output);
                 this._update_longest_chain(object);
+                await this.remove_from_currently_validating_db(hash_output);
                 break;
             case MESSAGE_TYPES.TRANSACTION_RECEIVED:
                 let tx_error: void | INVALID_TYPES = await validate_transaction(object);
