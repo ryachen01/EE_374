@@ -1,18 +1,14 @@
-CORES=4
 
-for ((i=0; i < 10; i++)) {
+for ((i=0; i < 10000; i++)) {
 
 # Array to store PIDs of Node.js instances
 pids=()
 
 # Run Node.js program on each core/thread for 30 seconds
-for ((j=0; j<$CORES; j++))
-do
-  node miner.js &
-  pids+=($!)
-done
+./b2sMiner &
+pids+=($!)
 
-sleep 10
+sleep 60
 
 # Stop each instance of the Node.js program
 for pid in "${pids[@]}"

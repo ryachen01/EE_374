@@ -7,9 +7,8 @@ export class LightNode {
 
     _client: net.Socket;
 
-    constructor() {
+    constructor(ip_address: string = "127.0.0.1") {
         this._client = new net.Socket();
-        const ip_address: string = "127.0.0.1";
 
         this._client.connect(port, ip_address, () => {
         });
