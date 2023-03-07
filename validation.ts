@@ -5,6 +5,7 @@ import { EventEmitter } from "events";
 import { canonicalize } from "json-canonicalize";
 import { INVALID_TYPES, MESSAGE_TYPES, UTXO } from "./types";
 import { parse_object, _hash_object } from './utils'
+import { SocketHandler } from './socket_handler'
 
 
 function hexToBytes(hex: string, encoding: BufferEncoding): Uint8Array {
@@ -456,24 +457,27 @@ async function _check_timestamp(object: string): Promise<Boolean> {
 }
 
 
-export async function validate_block(object: string, emitter: EventEmitter): Promise<void | INVALID_TYPES> {
+export async function validate_block(object: string, handler: SocketHandler): Promise<void | INVALID_TYPES> {
 
     const valid_pow = _check_pow(object);
     if (!valid_pow) {
         return INVALID_TYPES.INVALID_BLOCK_POW;
     }
 
+    const valid_parent = await handler._check_parent_block(object);
+
     // const valid_parent = await _check_parent_block(object, emitter);
-    // if (!valid_parent) {
-    //     return INVALID_TYPES.UNFINDABLE_OBJECT;
-    // }
 
     const valid_timestamp = await _check_timestamp(object);
     if (!valid_timestamp) {
         return INVALID_TYPES.INVALID_BLOCK_TIMESTAMP;
     }
 
-    const valid_txids = await _check_txids(object, emitter);
+    if (!valid_parent) {
+        return INVALID_TYPES.UNFINDABLE_OBJECT;
+    }
+
+    const valid_txids = await _check_txids(object, handler._event_emitter);
     if (!valid_txids) {
         return INVALID_TYPES.UNFINDABLE_OBJECT;
     }

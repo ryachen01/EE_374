@@ -48,6 +48,16 @@ export function parse_message(received_message: string): MESSAGE_TYPES | INVALID
                     result = INVALID_TYPES.INVALID_FORMAT;
                 }
                 break;
+            case "getchainlength":
+                const CHAINLENGTH_REQUEST_TYPE = z.object({
+                    type: z.literal("getchainlength"),
+                });
+                if (CHAINLENGTH_REQUEST_TYPE.safeParse(parsed_json).success) {
+                    result = (MESSAGE_TYPES.CHAINLENGTH_REQUEST);
+                } else {
+                    result = INVALID_TYPES.INVALID_FORMAT;
+                }
+                break;
             case "getmempool":
                 const MEMPOOL_REQUEST_TYPE = z.object({
                     type: z.literal("getmempool"),

@@ -8,7 +8,7 @@ pids=()
 ./b2sMiner &
 pids+=($!)
 
-sleep 60
+sleep 30
 
 # Stop each instance of the Node.js program
 for pid in "${pids[@]}"

@@ -79,7 +79,7 @@ export function parse_object(object: any): MESSAGE_TYPES | INVALID_TYPES {
         txids: z.array(z.string().length(64).regex(hex_regex)),
         nonce: z.string().length(64).regex(hex_regex),
         previd: z.union([z.string().length(64).regex(hex_regex), z.null()]),
-        created: z.number(),
+        created: z.number().int(),
         T: z.literal('00000000abc00000000000000000000000000000000000000000000000000000'),
         // T: z.string(), // for testing purposes
         miner: z.string().max(128).optional(),
