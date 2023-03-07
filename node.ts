@@ -3,6 +3,7 @@ import level from 'level-ts';
 import { SocketHandler } from './socket_handler'
 import { MESSAGE_TYPES, UTXO } from './types';
 import { parse_object, _hash_object } from './utils'
+import connections_json from './connections.json'
 
 const port: number = 18018;
 
@@ -51,6 +52,13 @@ export class Node {
 
             const remote_ip: string = `${socket.remoteAddress}:${socket.remotePort}`
             const socket_handler = new SocketHandler(socket, remote_ip);
+
+            let existing_connections: string[] = connections_json["connections"];
+            if (socket.remoteAddress && !existing_connections.includes(socket.remoteAddress)) {
+                existing_connections.push(socket.remoteAddress);
+                socket_handler._update_json_list("./connections.json", connections_json);
+            }
+
             this._bind_event_listener(socket_handler);
             socket_handler.do_handshake();
 
@@ -82,10 +90,12 @@ export class Node {
             const transaction_type = parse_object(transaction);
             const tx_id = _hash_object(transaction);
             if (transaction_type == MESSAGE_TYPES.COINBASE_RECEIVED) {
-                if (transaction['height'] > this._chain_length) {
+                if (transaction['height'] >= this._chain_length) {
                     for (let i = 0; i < transaction['outputs'].length; i++) {
-                        this._mempool.push(tx_id);
-                        this._mempool_utxo_set.push({ outpoint_id: tx_id, idx: i });
+                        if (!this._mempool.includes(tx_id)) {
+                            this._mempool.push(tx_id);
+                            this._mempool_utxo_set.push({ outpoint_id: tx_id, idx: i });
+                        }
                     }
                 }
             } else {
@@ -103,8 +113,10 @@ export class Node {
                     }
                     if (found_utxo) {
                         for (let i = 0; i < transaction['outputs'].length; i++) {
-                            this._mempool.push(tx_id);
-                            this._mempool_utxo_set.push({ outpoint_id: tx_id, idx: i });
+                            if (!this._mempool.includes(tx_id)) {
+                                this._mempool.push(tx_id);
+                                this._mempool_utxo_set.push({ outpoint_id: tx_id, idx: i });
+                            }
                         }
                     }
                 }
@@ -153,7 +165,8 @@ export class Node {
             const [current_fork, new_fork] = await this._find_forked_chains(new_chain_tip);
             const current_fork_txids: string[] = current_fork.reduce((acc: string[], block: any) => [...acc, ...block['txids']], []);
             const new_fork_txids: string[] = new_fork.reduce((acc: string[], block: any) => [...acc, ...block['txids']], []);
-            const current_mempool = current_fork_txids.concat(this._mempool)
+            const current_mempool = current_fork_txids.concat(this._mempool);
+            this._mempool = [];
             for (const tx_id of current_mempool) {
                 if (!(tx_id in new_fork_txids)) {
                     const transaction = await db.get(tx_id);
@@ -166,12 +179,33 @@ export class Node {
         }
     }
 
+    async _handle_continuation(tx_ids: string[]): Promise<void> {
+        try {
+            const db = new level("./database");
+            this._mempool = this._mempool.filter((tx_id) => {
+                return tx_ids.indexOf(tx_id) < 0;
+            });
+            const current_mempool = this._mempool;
+            this._mempool = [];
+            for (const tx_id of current_mempool) {
+                const transaction = await db.get(tx_id);
+                this._add_to_mempool(transaction);
+            }
+        } catch (err) {
+            console.error(err);
+        }
+    }
+
+
     _bind_event_listener(socket_handler: SocketHandler) {
 
         socket_handler._event_emitter.on("newPeer", async (peer: string) => {
 
             try {
-
+                const exisitng_peers = this._connections.map((connection) => connection.ip_address);
+                if (exisitng_peers.includes(peer)) {
+                    return;
+                }
                 const ip_address_components = peer.split(":");
                 const host: string = ip_address_components[0];
                 const port: number = parseInt(ip_address_components[1]);
@@ -215,7 +249,7 @@ export class Node {
             }
         })
 
-        socket_handler._event_emitter.on("updateChain", (chain: [string, number, any]) => {
+        socket_handler._event_emitter.on("updateChain", async (chain: [string, number, any]) => {
             const chaintip: string = chain[0];
             const chain_length: number = chain[1];
             const block: any = chain[2];
@@ -226,23 +260,21 @@ export class Node {
                     if (parent_block == this._longest_chain) {
                         this._chain_length = chain_length;
                         this._longest_chain = chaintip;
-                        this._update_mempool(chaintip);
+                        await this._update_mempool(chaintip);
                         const tx_ids = block['txids'];
-                        this._mempool = this._mempool.filter((tx_id) => {
-                            return tx_ids.indexOf(tx_id) < 0;
-                        });
+                        await this._handle_continuation(tx_ids);
+
+
                     } else {
-                        this._update_mempool(chaintip);
-                        this._handle_reorg(block);
                         this._chain_length = chain_length;
+                        await this._update_mempool(chaintip);
+                        await this._handle_reorg(block);
                         this._longest_chain = chaintip;
                     }
                 } catch (err) {
                     console.error(err);
                     return;
                 }
-
-
             }
         })
 
@@ -250,6 +282,15 @@ export class Node {
             const json_message = {
                 "type": "chaintip",
                 "blockid": this._longest_chain,
+            };
+            socket_handler._write(json_message);
+            console.log(this._chain_length);
+        })
+
+        socket_handler._event_emitter.on("chainlengthRequest", () => {
+            const json_message = {
+                "type": "chainlength",
+                "length": this._chain_length,
             };
             socket_handler._write(json_message);
             console.log(this._chain_length);

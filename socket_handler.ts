@@ -22,14 +22,13 @@ export class SocketHandler {
     // keeps track of blocks validating as part of recursive validation
     // any errors these blocks make should result in an unfindable object error
     _parent_blocks: Set<string> = new Set();
-    _currently_validating_blocks: Set<string> = new Set();
 
     _error_count: number = 0;
     _error_threshold: number = 50;
     _timeout_length: number = 3000;
     _max_buffer_size: number = 1000000;
     _cur_message_count: number = 0;
-    _message_threshold: number = 100;
+    _message_threshold: number = 200;
 
     _event_emitter = new EventEmitter();
 
@@ -92,7 +91,8 @@ export class SocketHandler {
         let connection_timer: any;
         return new Promise((resolve) => {
             connection_timer = setTimeout(() => {
-                this._fatal_error("failed to connect to node");
+                console.log("failed to connect to node");
+                // this._fatal_error("failed to connect to node");
                 resolve(false);
             }, this._timeout_length);
 
@@ -135,6 +135,7 @@ export class SocketHandler {
         }
         this._write(json_message);
     }
+
 
     do_handshake() {
         this._send_hello();
@@ -191,6 +192,10 @@ export class SocketHandler {
                 case MESSAGE_TYPES.CHAINTIP_REQUEST:
                     this._check_handshake();
                     this._event_emitter.emit("chaintipRequest");
+                    break;
+                case MESSAGE_TYPES.CHAINLENGTH_REQUEST:
+                    this._check_handshake();
+                    this._event_emitter.emit("chainlengthRequest");
                     break;
                 case MESSAGE_TYPES.CHAINTIP_RECEIVED:
                     this._check_handshake();
@@ -307,8 +312,8 @@ export class SocketHandler {
 
                         exisitng_peers.push(peer);
                         this._update_json_list("./peers.json", peers_json);
-                        this._event_emitter.emit('newPeer', peer);
                     }
+                    this._event_emitter.emit('newPeer', peer);
                 } else {
                     console.log("invalid ip: ", peer);
                 }
@@ -339,10 +344,10 @@ export class SocketHandler {
         }
     }
 
-    async _check_parent_block(object: string, emitter: EventEmitter, retry_count: number = 0): Promise<Boolean> {
+    async _check_parent_block(object: string, retry_count: number = 0): Promise<Boolean> {
         const db = new level("./database");
         const validating_db = new level("./currently_validating_db");
-        if (retry_count >= 200) {
+        if (retry_count >= 300) {
             return false;
         }
         try {
@@ -375,10 +380,10 @@ export class SocketHandler {
 
                 if (retry_count == 0) {
                     this._parent_blocks.add(parent_hash);
-                    emitter.emit("unknownObjects", [parent_hash]); // because everything is recursive we end up spamming nodes with requests if we're missing even 1 block
+                    this._event_emitter.emit("unknownObjects", [parent_hash]); // because everything is recursive we end up spamming nodes with requests if we're missing even 1 block
                 }
                 await sleep(300);
-                return this._check_parent_block(object, emitter, retry_count + 1);
+                return this._check_parent_block(object, retry_count + 1);
             }
 
 
@@ -423,24 +428,28 @@ export class SocketHandler {
             case MESSAGE_TYPES.BLOCK_RECEIVED:
                 // this._currently_validating_blocks.add(hash_output);
                 const db = new level("./currently_validating_db");
-                db.put(hash_output, null);
-                const valid_parent = await this._check_parent_block(object, this._event_emitter);
-                if (!valid_parent) {
-                    console.error("parent block has error");
-                    error_message = {
-                        "type": "error",
-                        "name": "UNFINDABLE_OBJECT",
-                        "description": "The object requested could not be found in the node's network."
-                    }
-                    this._write(error_message);
-                    this._fatal_error("object requested could not be found in the node's network");
-                    this._parent_blocks.delete(hash_output);
-                    // this._currently_validating_blocks.delete(hash_output);
-                    await this.remove_from_currently_validating_db(hash_output);
+                if (await db.exists(hash_output)) {
                     return;
                 }
+                await db.put(hash_output, null);
 
-                let block_error: void | INVALID_TYPES = await validate_block(object, this._event_emitter);
+                // const valid_parent = await this._check_parent_block(object, this._event_emitter);
+                // if (!valid_parent) {
+                //     console.error("parent block has error");
+                //     error_message = {
+                //         "type": "error",
+                //         "name": "UNFINDABLE_OBJECT",
+                //         "description": "The object requested could not be found in the node's network."
+                //     }
+                //     this._write(error_message);
+                //     this._fatal_error("object requested could not be found in the node's network");
+                //     this._parent_blocks.delete(hash_output);
+                //     // this._currently_validating_blocks.delete(hash_output);
+                //     await this.remove_from_currently_validating_db(hash_output);
+                //     return;
+                // }
+
+                let block_error: void | INVALID_TYPES = await validate_block(object, this);
                 if (this._parent_blocks.has(hash_output)) {
                     if (block_error) {
                         error_message = {
@@ -690,7 +699,7 @@ export class SocketHandler {
             if (this._socket.destroyed || this._cur_message_count > this._message_threshold) {
                 return;
             }
-            this._cur_message_count++;
+
             if (this._timer_id) {
                 clearTimeout(this._timer_id);
                 this._timer_id = null;
@@ -699,6 +708,8 @@ export class SocketHandler {
             let message_type: MESSAGE_TYPES | INVALID_TYPES = parse_message(message);
 
             this._handle_message(message, message_type);
+
+            this._cur_message_count++;
 
             if (message_type == MESSAGE_TYPES.PEERS_RECEIVED) {
                 this._handle_new_peers(message);
